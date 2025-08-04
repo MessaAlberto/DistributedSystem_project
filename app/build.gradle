@@ -1,0 +1,41 @@
+plugins {
+    // Apply the application plugin to add support for building a CLI application in Java.
+    id 'application'
+}
+
+repositories {
+    // Use Maven Central for resolving dependencies.
+    mavenCentral()
+    mavenLocal()
+    maven {
+        url "https://repo.akka.io/maven"
+    }
+}
+
+def scalaVersion = "2.13"
+def akkaVersion = "2.9.0"
+def logbackVersion = "1.2.3"
+def junitVersion = "4.13.1"
+
+dependencies {
+    // Akka typed actor library
+    implementation "com.typesafe.akka:akka-actor-typed_${scalaVersion}:${akkaVersion}"
+    // Logging framework
+    implementation "ch.qos.logback:logback-classic:${logbackVersion}"
+
+    // Akka typed actor testkit for tests
+    testImplementation "com.typesafe.akka:akka-actor-testkit-typed_${scalaVersion}:${akkaVersion}"
+    // JUnit test framework
+    testImplementation "junit:junit:${junitVersion}"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    // Update this to your main class with the correct package and class name
+    mainClass = "it.unitn.MarsStorageSystem"
+}
