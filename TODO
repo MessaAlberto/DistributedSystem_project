@@ -1,0 +1,19 @@
+On Node
+- add random time delay
+- set the coordinator with the request
+- coordinator managed the request with other nodes
+- add ring logic for saving info
+
+- versioning (lab 3) --> sequential order
+- add join/leave/crash/recovery logic (view changes) (lab 3)
+- set 2 message dispatchers (one for active node, one for inactive node)
+
+On Client
+- send request to specific node
+- handle multiple requests
+
+On Main
+- keep track of current scenario: active/inactive nodes, active client and manage the client request list on creation
+- create random client
+- create specific client to test different scenarios
+- create request to join/crash/recover on nodes
