@@ -39,3 +39,7 @@ application {
     // Update this to your main class with the correct package and class name
     mainClass = "it.unitn.Main"
 }
+
+run {
+    standardInput = System.in
+}

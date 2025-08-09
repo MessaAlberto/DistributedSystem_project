@@ -1,5 +1,3 @@
-// File: Client.java
-
 package it.unitn;
 
 import java.util.List;
@@ -16,7 +14,7 @@ public class Client extends AbstractActor {
     this.nodes = nodes;
   }
 
-  // Message to trigger an update from outside
+  // Message to trigger a write/update operation
   public static class Update {
     public final int key;
     public final String value;
@@ -27,7 +25,7 @@ public class Client extends AbstractActor {
     }
   }
 
-  // Message to trigger a get from outside
+  // Message to trigger a read/get operation
   public static class Get {
     public final int key;
 
@@ -41,18 +39,37 @@ public class Client extends AbstractActor {
     return receiveBuilder()
         .match(Update.class, this::onUpdate)
         .match(Get.class, this::onGet)
+        .match(Node.PutAck.class, this::onPutAck)
+        .match(Node.GetVersionResponse.class, this::onGetVersionResponse)
+        .match(Node.OperationFailed.class, this::onOperationFailed)
         .build();
   }
 
-  // Handle Update message
   private void onUpdate(Update msg) {
     ActorRef target = nodes.get(random.nextInt(nodes.size()));
+    System.out.println("[Client] Sending PutRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + Node.shortName(target));
     target.tell(new Node.PutRequest(msg.key, msg.value), getSelf());
   }
 
-  // Handle Get message
   private void onGet(Get msg) {
     ActorRef target = nodes.get(random.nextInt(nodes.size()));
+    System.out.println("[Client] Sending GetRequest key=" + msg.key + " to " + Node.shortName(target));
     target.tell(new Node.GetRequest(msg.key), getSelf());
+  }
+
+  private void onPutAck(Node.PutAck msg) {
+    System.out.println("[Client] Received PutAck for key=" + msg.key + ", version=" + msg.version + " from " + Node.shortName(msg.responder));
+  }
+
+  private void onGetVersionResponse(Node.GetVersionResponse msg) {
+    if (msg.version == 0 || msg.value == null) {
+      System.out.println("[Client] Key " + msg.key + " not found.");
+    } else {
+      System.out.println("[Client] Received value for key=" + msg.key + ": \"" + msg.value + "\" with version=" + msg.version + " from " + Node.shortName(msg.responder));
+    }
+  }
+
+  private void onOperationFailed(Node.OperationFailed msg) {
+    System.out.println("[Client] Operation failed for key=" + msg.key + ": " + msg.reason);
   }
 }

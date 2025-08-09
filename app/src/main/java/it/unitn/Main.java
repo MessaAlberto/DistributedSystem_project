@@ -11,7 +11,7 @@ import akka.actor.ActorSystem;
 import akka.actor.Props;
 
 public class Main {
-  public static void main(String[] args) {
+  public static void main(String[] args) throws InterruptedException {
 
     Properties config = new Properties();
     try (InputStream input = Main.class.getClassLoader().getResourceAsStream("config.properties")) {
@@ -28,7 +28,7 @@ public class Main {
     final int R = Integer.parseInt(config.getProperty("R", "3"));
     final int W = Integer.parseInt(config.getProperty("W", "2"));
 
-    System.out.println("Configuration loaded: N=" + N + ", R=" + R + ", W=" + W);
+    System.out.println("\nConfiguration loaded: N=" + N + ", R=" + R + ", W=" + W + "\n");
 
     ActorSystem system = ActorSystem.create("MarsSystem");
     List<ActorRef> nodes = new ArrayList<>();
@@ -39,12 +39,43 @@ public class Main {
       nodes.add(node);
     }
 
-    // Send initial peer list to all nodes
-    for (ActorRef node : nodes) {
-      node.tell(new Node.InitPeers(nodes), ActorRef.noSender());
+    // Create a map for InitPeers (ActorRef -> nodeId)
+    java.util.Map<ActorRef, Integer> nodeIdMap = new java.util.HashMap<>();
+    for (int i = 0; i < N; i++) {
+      nodeIdMap.put(nodes.get(i), i);
     }
 
-    // Start client and pass quorum values for read/write quorums
+    // Send initial peer list to all nodes with nodeIdMap
+    for (ActorRef node : nodes) {
+      node.tell(new Node.InitPeers(nodes, nodeIdMap), ActorRef.noSender());
+    }
+
+    // Create client
     ActorRef client = system.actorOf(Props.create(Client.class, nodes), "client");
+
+    inputContinue();
+
+    System.out.println("\n[Client] Sending a PutRequest to store key=42 with value=\"TestWord\"\n");
+    client.tell(new Client.Update(42, "TestWord"), ActorRef.noSender());
+
+    inputContinue();
+
+    System.out.println("\n[Client] Sending a GetRequest to retrieve key=42\n");
+    client.tell(new Client.Get(42), ActorRef.noSender());
+
+    inputContinue();
+
+    system.terminate();
+    system.getWhenTerminated().toCompletableFuture().join();
+
+    System.out.println("\nSystem terminated, exiting main.\n");
+  }
+
+  public static void inputContinue() {
+    try {
+      System.out.println("Waiting 3 seconds...\n");
+      Thread.sleep(3000); // 3 seconds pause
+    } catch (InterruptedException ignored) {
+    }
   }
 }
