@@ -1,19 +1,40 @@
 On Node
-- add random time delay
-- set the coordinator with the request
-- coordinator managed the request with other nodes
-- add ring logic for saving info
+- [ ] add random time delay
+- [ ] set the coordinator with the request (ora è sempre il nodo che riceve la richiesta)
+- [x] versioning + quorum -> sequential order 
+      (già implementato con DataItem.version, GetVersionRequest/Response, quorum R/W)
+- [x] add ring logic for saving info 
+      (già fatto con getResponsibleNodes e % size)
 
-- versioning (lab 3) --> sequential order
-- add join/leave/crash/recovery logic (view changes) (lab 3)
-- set 2 message dispatchers (one for active node, one for inactive node)
+- [ ] add join/leave/crash/recovery logic (view changes with central manager) (lab 3)
+- [ ] set 2 message dispatchers (one for active node, one for inactive node)
 
 On Client
-- send request to specific node
-- handle multiple requests
+- [ ] send request to specific node
+- [ ] handle multiple requests
 
 On Main
-- keep track of current scenario: active/inactive nodes, active client and manage the client request list on creation
-- create random client
-- create specific client to test different scenarios
-- create request to join/crash/recover on nodes
+- [ ] keep track of current scenario: active/inactive nodes, active client and manage the client request list on creation
+- [ ] create random client
+- [ ] create specific client to test different scenarios
+- [ ] create request to join/crash/recover on nodes
+
+Pipeline PutRequest (dettagliata con funzioni attuali)
+Client (sendPutRequest) 
+  -> Coordinator (handlePutRequest) 
+    -> getResponsibleNodes 
+    -> send GetVersionRequest ai nodi responsabili
+    -> handleGetVersionResponse (raccolta versioni correnti)
+    -> calcolo nuova versione (max+1)
+    -> send PutValue a N nodi (handlePutValue)
+    -> raccolta W conferme (handlePutValueResponse)
+    -> Coordinator -> Client (handlePutResponse finale)
+
+Pipeline GetRequest
+Client (sendGetRequest) 
+  -> Coordinator (handleGetRequest) 
+    -> getResponsibleNodes 
+    -> send GetValueRequest ai nodi responsabili
+    -> handleGetValueResponse (raccolta di R valori)
+    -> scelta valore con versione maggiore
+    -> Coordinator -> Client (handleGetResponse finale)
