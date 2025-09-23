@@ -7,7 +7,7 @@ On Node
       (già fatto con getResponsibleNodes e % size)
 
 - [ ] add join/leave/crash/recovery logic (view changes with central manager) (lab 3)
-- [ ] set 2 message dispatchers (one for active node, one for inactive node)
+- [x] set 2 message dispatchers (one for active node, one for inactive node)
 
 On Client
 - [ ] send request to specific node
@@ -17,7 +17,7 @@ On Main
 - [ ] keep track of current scenario: active/inactive nodes, active client and manage the client request list on creation
 - [ ] create random client
 - [ ] create specific client to test different scenarios
-- [ ] create request to join/crash/recover on nodes
+- [x] create request to join/crash/recover on nodes
 
 Pipeline PutRequest (dettagliata con funzioni attuali)
 Client (sendPutRequest) 

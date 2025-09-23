@@ -47,7 +47,7 @@ public class Node extends AbstractActor {
   private boolean serving = true; // nodi creati all’avvio servono subito; i nuovi nodi metteranno serving=false finché pronti
 
   // Modalità coordinatore per join/recovery
-  private enum Mode { IDLE, JOINING, RECOVERING }
+  private enum Mode { IDLE, JOINING, RECOVERING, CRASHED }
   private Mode mode = Mode.IDLE;
 
   private static class JoinContext {
@@ -292,6 +292,7 @@ public class Node extends AbstractActor {
   }
 
   // ===== Membership & transfer messages (aggiunte) =====
+  public static class Crash implements Serializable {}
   public static class GetPeersRequest implements Serializable {}
   public static class PeerSet implements Serializable {
     public final List<ActorRef> peers;
@@ -388,12 +389,11 @@ public class Node extends AbstractActor {
   private final Map<Integer, ReadCoordinatorState> activeReadCoordinators = new HashMap<>();
 
   // =====================
-  // Actor Lifecycle: createReceive
+  // Actor Lifecycle: behaviors
   // =====================
 
-  /** Akka message routing: registers all handlers for the supported messages. */
-  @Override
-  public Receive createReceive() {
+  // Behavior operativo: gestisce tutte le richieste
+  private Receive activeReceive() {
     return receiveBuilder()
         .match(InitPeers.class, this::onInitPeers)
         .match(PutRequest.class, this::onPutRequest)
@@ -417,8 +417,43 @@ public class Node extends AbstractActor {
         .match(AnnounceLeave.class, this::onAnnounceLeave)
         .match(LeaveNetwork.class, this::onLeaveNetwork)
         .match(TransferData.class, this::onTransferData)
+        .match(Crash.class, this::onCrash)
         .build();
   }
+  
+  // Behavior di JOIN/RECOVERY: nessun Put/Get; gestisce bootstrap e catch-up
+  private Receive joiningRecoveringReceive() {
+    return receiveBuilder()
+        .match(PutRequest.class, m -> getSender().tell(new OperationFailed(m.key, "Node not serving yet"), getSelf()))
+        .match(GetRequest.class, m -> getSender().tell(new OperationFailed(m.key, "Node not serving yet"), getSelf()))
+        .match(GetPeersRequest.class, this::onGetPeersRequest)
+        .match(PeerSet.class, this::onPeerSet)
+        .match(RequestItemsForJoin.class, this::onRequestItemsForJoin)
+        .match(RequestItemsForRecovery.class, this::onRequestItemsForRecovery)
+        .match(DataItemsBatch.class, this::onDataItemsBatch)
+        .match(GetVersionRequest.class, this::onGetVersionRequest)
+        .match(GetVersionResponse.class, this::onGetVersionResponse)
+        .match(ReadTimeout.class, this::onReadTimeout)
+        .match(AnnounceJoin.class, this::onAnnounceJoin)
+        .match(AnnounceLeave.class, this::onAnnounceLeave)
+        .match(TransferData.class, this::onTransferData)
+        .match(JoinNetwork.class, this::onJoinNetwork)
+        .match(RecoverNetwork.class, this::onRecoverNetwork)
+        .match(Crash.class, this::onCrash)
+        .build();
+  }
+  
+  // Behavior di CRASH: ignora tutto, tranne RecoverNetwork
+  private Receive crashedReceive() {
+    return receiveBuilder()
+        .match(RecoverNetwork.class, this::onRecoverNetwork)
+        .matchAny(m -> { /* drop */ })
+        .build();
+  }
+  
+  /** Behavior iniziale = active. */
+  @Override
+  public Receive createReceive() { return activeReceive(); }
 
   // =====================
   // Message Handlers
@@ -535,8 +570,7 @@ public class Node extends AbstractActor {
             DataItem current = store.get(msg.key);
             if (current == null || maxVersionResponse.version >= current.version) {
               store.put(msg.key, new DataItem(maxVersionResponse.version, maxVersionResponse.value));
-              System.out.println("[Node " + nodeId + "] (Maintenance) Refreshed key=" + msg.key +
-                                 " v=" + maxVersionResponse.version);
+              System.out.println("[Node " + nodeId + "] (Maintenance) Refreshed key=" + msg.key +" v=" + maxVersionResponse.version);
             }
           } else {
             System.out.println("[Node " + nodeId + "] (Read) Returning value v=" + maxVersionResponse.version + " to client");
@@ -704,6 +738,7 @@ public class Node extends AbstractActor {
     // Avvio join: richiede la vista a un bootstrap
     this.mode = Mode.JOINING;
     this.serving = false;
+    getContext().become(joiningRecoveringReceive());
     System.out.println("[Node " + nodeId + "] Starting JOIN via " + shortName(msg.bootstrap));
     msg.bootstrap.tell(new GetPeersRequest(), getSelf());
   }
@@ -712,6 +747,7 @@ public class Node extends AbstractActor {
   private void onRecoverNetwork(RecoverNetwork msg) {
     this.mode = Mode.RECOVERING;
     this.serving = false;
+    getContext().become(joiningRecoveringReceive());
     System.out.println("[Node " + nodeId + "] Starting RECOVERY via " + shortName(msg.bootstrap));
     msg.bootstrap.tell(new GetPeersRequest(), getSelf());
   }
@@ -787,7 +823,7 @@ public class Node extends AbstractActor {
       this.serving = true;
       this.mode = Mode.IDLE;
       this.joinCtx = null;
-
+      getContext().become(activeReceive());
       System.out.println("[Node " + nodeId + "] JOIN completed and serving.");
 
     } else if (mode == Mode.RECOVERING) {
@@ -810,6 +846,7 @@ public class Node extends AbstractActor {
       }
       this.serving = true;
       this.mode = Mode.IDLE;
+      getContext().become(activeReceive());
       System.out.println("[Node " + nodeId + "] RECOVERY completed and serving.");
     } else {
       // Batch generico: salva
@@ -822,14 +859,29 @@ public class Node extends AbstractActor {
     }
   }
 
-  /** Adds a newly joined node to the local view and prunes non-responsible keys. */
+  /** Adds a newly joined node to the local view, backfills keys it should now replicate, then prunes. */
   private void onAnnounceJoin(AnnounceJoin msg) {
     if (!nodeIdMap.containsKey(msg.node)) {
+      // 1) Aggiorna la vista
       peers.add(msg.node);
       nodeIdMap.put(msg.node, msg.nodeId);
-      // Ordina e ripartisci (pruning)
+
+      // 2) Backfill: per ogni chiave locale, se il nuovo nodo deve essere tra i responsabili
+      //    e questo nodo NON è più tra i responsabili, invia prima il dato al nuovo nodo.
+      for (Map.Entry<Integer, DataItem> e : new ArrayList<>(store.entrySet())) {
+        int key = e.getKey();
+        List<ActorRef> newResp = getResponsibleNodes(key);
+        boolean newShouldHave = newResp.contains(msg.node);
+        boolean iStillResponsible = newResp.contains(getSelf());
+        if (newShouldHave && !iStillResponsible) {
+          DataItem di = e.getValue();
+          msg.node.tell(new TransferData(key, di.version, di.value), getSelf());
+        }
+      }
+
+      // 3) Solo ora pruna ciò che non è più di competenza
       pruneKeysNotResponsible();
-      System.out.println("[Node " + nodeId + "] AnnounceJoin: added " + shortName(msg.node));
+      System.out.println("[Node " + nodeId + "] AnnounceJoin: added " + shortName(msg.node) + " with backfill");
     }
   }
 
@@ -894,5 +946,13 @@ public class Node extends AbstractActor {
       store.put(msg.key, new DataItem(msg.version, msg.value));
       System.out.println("[Node " + nodeId + "] Received transfer key=" + msg.key + " v=" + msg.version);
     }
+  }
+
+  /** Simulates a temporary crash: stop serving and ignore all messages until recovery. */
+  private void onCrash(Crash msg) {
+    System.out.println("[Node " + nodeId + "] Simulating CRASH (temporarily unavailable)");
+    this.mode = Mode.CRASHED;
+    this.serving = false;
+    getContext().become(crashedReceive());
   }
 }
