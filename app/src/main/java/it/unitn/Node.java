@@ -5,19 +5,32 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
+import it.unitn.MarsSystemManager.CrashNode;
+import it.unitn.MarsSystemManager.JoinNode;
+import it.unitn.MarsSystemManager.LeaveNode;
+import it.unitn.MarsSystemManager.RecoverNode;
+import it.unitn.MarsSystemManager.RingUtils;
 import scala.concurrent.duration.Duration;
 
 public class Node extends AbstractActor {
+
+  private final Logger logger;
+
   private final int nodeId;
-  private List<ActorRef> peers = new ArrayList<>();
+  private List<ActorRef> nodes = new ArrayList<>();
+  private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Mappa ActorRef -> nodeId dei peer conosciuti
+  private boolean joining;
+  private final ActorRef manager;
 
   private final Map<Integer, DataItem> store = new HashMap<>();
 
@@ -25,38 +38,51 @@ public class Node extends AbstractActor {
   private final int R; // Read quorum size
   private final int W; // Write quorum size
 
-  private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Mappa ActorRef -> nodeId dei peer conosciuti
+  private int receivedResponseForRecovery = 0;
 
   // Timeout duration in seconds
   private static final int TIMEOUT_SECONDS = 5;
 
   /** Constructs a node with its id and quorum parameters (N,R,W). */
-  public Node(int nodeId, int N, int R, int W) {
+  public Node(int nodeId, int N, int R, int W, boolean joining, ActorRef manager) {
     this.nodeId = nodeId;
     this.N = N;
     this.R = R;
     this.W = W;
+
+    this.joining = joining;
+    this.manager = manager;
+
+    logger = new Logger("Node " + nodeId);
   }
 
   /** Akka factory method to create Props for this actor. */
-  public static Props props(int nodeId, int N, int R, int W) {
-    return Props.create(Node.class, () -> new Node(nodeId, N, R, W));
+  public static Props props(int nodeId, int N, int R, int W, boolean joining, ActorRef manager) {
+    return Props.create(Node.class, () -> new Node(nodeId, N, R, W, joining, manager));
   }
 
-  // Stato di servizio: finché non ha completato join/recovery, non serve richieste client
-  private boolean serving = true; // nodi creati all’avvio servono subito; i nuovi nodi metteranno serving=false finché pronti
+  @Override
+  public void preStart() {
+    // joining nodes contact the manager
+    if (joining) {
+      mode = Mode.JOINING;
+      serving = false;
+      getContext().become(joiningRecoveringReceive());
+      manager.tell(new JoinNode(nodeId), getSelf());
+    }
+  }
+
+  // Stato di servizio: finché non ha completato join/recovery, non serve
+  // richieste client
+  private boolean serving = true; // nodi creati all’avvio servono subito; i nuovi nodi metteranno serving=false
+                                  // finché pronti
 
   // Modalità coordinatore per join/recovery
-  private enum Mode { IDLE, JOINING, RECOVERING, CRASHED }
-  private Mode mode = Mode.IDLE;
-
-  private static class JoinContext {
-    List<ActorRef> updatedPeers;
-    Map<ActorRef, Integer> updatedMap;
-    ActorRef successor;
-    List<ActorRef> oldPeers;
+  private enum Mode {
+    IDLE, JOINING, RECOVERING, CRASHED
   }
-  private JoinContext joinCtx;
+
+  private Mode mode = Mode.IDLE;
 
   // =====================
   // Data structure to hold stored values
@@ -75,9 +101,11 @@ public class Node extends AbstractActor {
   // Helper Methods
   // =====================
 
-  /** Returns the N responsible replica nodes for a key (ring order, wrap-around). */
-  private List<ActorRef> getResponsibleNodes(int key) {
-    List<ActorRef> sortedPeers = new ArrayList<>(peers);
+  /**
+   * Returns the N responsible replica nodes for a key (ring order, wrap-around).
+   */
+  private List<ActorRef> getResponsibleNodes(int key, List<ActorRef> nodes) {
+    List<ActorRef> sortedPeers = new ArrayList<>(nodes);
     Collections.sort(sortedPeers, Comparator.comparingInt(a -> nodeIdMap.get(a)));
 
     long unsignedKey = key & 0xFFFFFFFFL;
@@ -105,101 +133,46 @@ public class Node extends AbstractActor {
     return responsible;
   }
 
-  /** Utility: returns peers sorted by their nodeId using the provided map. */
-  private static List<ActorRef> sortPeersById(List<ActorRef> list, Map<ActorRef,Integer> map) {
-    List<ActorRef> sorted = new ArrayList<>(list);
-    Collections.sort(sorted, Comparator.comparingInt(map::get));
-    return sorted;
-  }
-
-  /** Finds the successor peer for a given id (first peer with id >= given id, with wrap). */
-  private ActorRef findSuccessorOfId(int id, List<ActorRef> list, Map<ActorRef,Integer> map) {
-    List<ActorRef> sorted = sortPeersById(list, map);
-    for (ActorRef p : sorted) {
-      if (map.get(p) >= id) return p;
-    }
-    return sorted.isEmpty() ? null : sorted.get(0);
-  }
-
-  /** Finds the predecessor peer for a given id (largest id < given id, or last on wrap). */
-  private ActorRef findPredecessorOfId(int id, List<ActorRef> list, Map<ActorRef,Integer> map) {
-    List<ActorRef> sorted = sortPeersById(list, map);
-    ActorRef pred = null;
-    int predId = Integer.MIN_VALUE;
-    for (ActorRef p : sorted) {
-      int pid = map.get(p);
-      if (pid < id && pid > predId) {
-        predId = pid;
-        pred = p;
-      }
-    }
-    if (pred != null) return pred;
-    return sorted.isEmpty() ? null : sorted.get(sorted.size()-1);
-  }
-
-  /** True if key lies in the ring interval (predId, selfId], considering wrap-around. */
-  private boolean inRingIntervalOpenClosed(int key, int predId, int selfId) {
-    // true se key ∈ (predId, selfId] con wrap-around
-    if (predId < selfId) {
-      return key > predId && key <= selfId;
-    } else if (predId > selfId) {
-      // wrap: (pred, MAX] U [MIN, self]
-      return key > predId || key <= selfId;
-    } else {
-      // pred == self: range completo (caso limite)
-      return true;
-    }
-  }
-  
   /** Removes local keys for which this node is no longer responsible. */
   private void pruneKeysNotResponsible() {
     List<Integer> toRemove = new ArrayList<>();
     for (Map.Entry<Integer, DataItem> e : store.entrySet()) {
       int key = e.getKey();
-      List<ActorRef> resp = getResponsibleNodes(key);
+      List<ActorRef> resp = getResponsibleNodes(key, nodes);
       if (!resp.contains(getSelf())) {
         toRemove.add(key);
       }
     }
     for (Integer k : toRemove) {
       store.remove(k);
-      System.out.println("[Node " + nodeId + "] Pruned key=" + k + " (no longer responsible)");
+      logger.log("Pruned key=" + k + " (no longer responsible)");
     }
-  }
-
-  /** Returns a short, human-friendly actor name for logging. */
-  public static String shortName(ActorRef actorRef) {
-    String name = actorRef.path().name(); // e.g. "node3"
-    if (name.startsWith("node")) {
-      return "Node " + name.substring(4);
-    }
-    return name;
   }
 
   // =====================
   // Message Classes
   // =====================
 
-  // All message classes: InitPeers, PutRequest, GetRequest, PutReplica,
+  // All message classes: InitPeers, UpdateRequest, GetRequest,
   // GetVersionRequest,
-  // GetVersionResponse, PutValue, PutAck, WriteTimeout, ReadTimeout,
+  // GetVersionResponse, UpdateValue, UpdateAck, WriteTimeout, ReadTimeout,
   // OperationFailed
 
-  public static class InitPeers implements Serializable {
-    public final List<ActorRef> peers;
-    public final Map<ActorRef, Integer> nodeIds;
+  public static class JoinGroupMsg implements Serializable {
+    public final List<ActorRef> nodes; // an array of group members
+    public final Map<ActorRef, Integer> nodeIdMap;
 
-    public InitPeers(List<ActorRef> peers, Map<ActorRef, Integer> nodeIds) {
-      this.peers = peers;
-      this.nodeIds = nodeIds;
+    public JoinGroupMsg(List<ActorRef> nodes, Map<ActorRef, Integer> nodeIdMap) {
+      this.nodes = Collections.unmodifiableList(new ArrayList<>(nodes));
+      this.nodeIdMap = Collections.unmodifiableMap(new HashMap<>(nodeIdMap));
     }
   }
 
-  public static class PutRequest implements Serializable {
+  public static class UpdateRequest implements Serializable {
     public final int key;
     public final String value;
 
-    public PutRequest(int key, String value) {
+    public UpdateRequest(int key, String value) {
       this.key = key;
       this.value = value;
     }
@@ -210,18 +183,6 @@ public class Node extends AbstractActor {
 
     public GetRequest(int key) {
       this.key = key;
-    }
-  }
-
-  public static class PutReplica implements Serializable {
-    public final int key;
-    public final int version;
-    public final String value;
-
-    public PutReplica(int key, int version, String value) {
-      this.key = key;
-      this.version = version;
-      this.value = value;
     }
   }
 
@@ -249,24 +210,24 @@ public class Node extends AbstractActor {
     }
   }
 
-  public static class PutValue implements Serializable {
+  public static class UpdateValue implements Serializable {
     public final int key;
     public final int version;
     public final String value;
 
-    public PutValue(int key, int version, String value) {
+    public UpdateValue(int key, int version, String value) {
       this.key = key;
       this.version = version;
       this.value = value;
     }
   }
 
-  public static class PutAck implements Serializable {
+  public static class UpdateAck implements Serializable {
     public final int key;
     public final int version;
     public final ActorRef responder;
 
-    public PutAck(int key, int version, ActorRef responder) {
+    public UpdateAck(int key, int version, ActorRef responder) {
       this.key = key;
       this.version = version;
       this.responder = responder;
@@ -292,59 +253,118 @@ public class Node extends AbstractActor {
   }
 
   // ===== Membership & transfer messages (aggiunte) =====
-  public static class Crash implements Serializable {}
-  public static class GetPeersRequest implements Serializable {}
+
+  public static class NodeAction implements Serializable {
+    public final String action; // "leave", "crash", "recover"
+
+    public NodeAction(String action) {
+      this.action = action;
+    }
+  }
+
+  public static class AllowJoin implements Serializable {
+    public final int nodeId;
+    public final ActorRef bootstrap;
+
+    public AllowJoin(int nodeId, ActorRef bootstrap) {
+      this.nodeId = nodeId;
+      this.bootstrap = bootstrap;
+    }
+  }
+
+  public static class AllowCrash implements Serializable {
+  }
+
+  public static class AllowRecover implements Serializable {
+    public final ActorRef bootstrap;
+
+    public AllowRecover(ActorRef bootstrap) {
+      this.bootstrap = bootstrap;
+    }
+  }
+
+  public static class ViewChangeMsg implements Serializable {
+    public final Integer viewId;
+    public final Set<ActorRef> proposedView;
+
+    public ViewChangeMsg(Integer viewId, Set<ActorRef> proposedView) {
+      this.viewId = viewId;
+      this.proposedView = Collections.unmodifiableSet(new HashSet<>(proposedView));
+    }
+  }
+
+  public static class GetPeersRequest implements Serializable {
+  }
+
   public static class PeerSet implements Serializable {
-    public final List<ActorRef> peers;
-    public final Map<ActorRef,Integer> nodeIds;
-    public PeerSet(List<ActorRef> peers, Map<ActorRef,Integer> nodeIds) {
-      this.peers = peers;
+    public final List<ActorRef> nodes;
+    public final Map<ActorRef, Integer> nodeIds;
+
+    public PeerSet(List<ActorRef> nodes, Map<ActorRef, Integer> nodeIds) {
+      this.nodes = nodes;
       this.nodeIds = nodeIds;
     }
   }
-  public static class JoinNetwork implements Serializable {
-    public final ActorRef bootstrap;
-    public JoinNetwork(ActorRef bootstrap) { this.bootstrap = bootstrap; }
+
+  public static class AllowLeave implements Serializable {
   }
+
   public static class RecoverNetwork implements Serializable {
     public final ActorRef bootstrap;
-    public RecoverNetwork(ActorRef bootstrap) { this.bootstrap = bootstrap; }
-  }
-  public static class RequestItemsForJoin implements Serializable {
-    public final int newNodeId;
-    public final ActorRef newNode;
-    public RequestItemsForJoin(int newNodeId, ActorRef newNode) {
-      this.newNodeId = newNodeId; this.newNode = newNode;
+
+    public RecoverNetwork(ActorRef bootstrap) {
+      this.bootstrap = bootstrap;
     }
   }
-  public static class RequestItemsForRecovery implements Serializable {
-    public final int requesterId;
-    public final ActorRef requester;
-    public RequestItemsForRecovery(int requesterId, ActorRef requester) {
-      this.requesterId = requesterId; this.requester = requester;
+
+  public static class ItemRequest implements Serializable {
+    public final ActorRef targetNode;
+
+    public ItemRequest(ActorRef targetNode) {
+      this.targetNode = targetNode;
     }
   }
+
   public static class DataItemsBatch implements Serializable {
     public final Map<Integer, DataItem> items;
-    public DataItemsBatch(Map<Integer, DataItem> items) { this.items = items; }
+
+    public DataItemsBatch(Map<Integer, DataItem> items) {
+      this.items = items;
+    }
   }
+
   public static class AnnounceJoin implements Serializable {
     public final ActorRef node;
     public final int nodeId;
-    public AnnounceJoin(ActorRef node, int nodeId) { this.node = node; this.nodeId = nodeId; }
+
+    public AnnounceJoin(ActorRef node, int nodeId) {
+      this.node = node;
+      this.nodeId = nodeId;
+    }
   }
+
   public static class AnnounceLeave implements Serializable {
     public final ActorRef node;
     public final int nodeId;
-    public AnnounceLeave(ActorRef node, int nodeId) { this.node = node; this.nodeId = nodeId; }
+
+    public AnnounceLeave(ActorRef node, int nodeId) {
+      this.node = node;
+      this.nodeId = nodeId;
+    }
   }
-  public static class LeaveNetwork implements Serializable {}
+
+  public static class LeaveNetwork implements Serializable {
+  }
+
   public static class TransferData implements Serializable {
     public final int key;
     public final int version;
     public final String value;
+
     public TransferData(int key, int version, String value) {
-      this.key = key; this.version = version; this.value = value;
+      this.key = key;
+      this.version = version;
+      this.value = value;
     }
   }
 
@@ -359,7 +379,7 @@ public class Node extends AbstractActor {
     public final List<ActorRef> responsibleNodes;
 
     public final Map<ActorRef, GetVersionResponse> versionReplies = new HashMap<>();
-    public final Map<ActorRef, PutAck> putAcks = new HashMap<>();
+    public final Map<ActorRef, UpdateAck> UpdateAcks = new HashMap<>();
 
     public int newVersion = 0;
 
@@ -389,93 +409,28 @@ public class Node extends AbstractActor {
   private final Map<Integer, ReadCoordinatorState> activeReadCoordinators = new HashMap<>();
 
   // =====================
-  // Actor Lifecycle: behaviors
-  // =====================
-
-  // Behavior operativo: gestisce tutte le richieste
-  private Receive activeReceive() {
-    return receiveBuilder()
-        .match(InitPeers.class, this::onInitPeers)
-        .match(PutRequest.class, this::onPutRequest)
-        .match(GetRequest.class, this::onGetRequest)
-        .match(GetVersionResponse.class, this::onGetVersionResponse)
-        .match(PutAck.class, this::onPutAck)
-        .match(PutReplica.class, this::onPutReplica)
-        .match(GetVersionRequest.class, this::onGetVersionRequest)
-        .match(PutValue.class, this::onPutValue)
-        .match(WriteTimeout.class, this::onWriteTimeout)
-        .match(ReadTimeout.class, this::onReadTimeout)
-        // Membership & transfer
-        .match(GetPeersRequest.class, this::onGetPeersRequest)
-        .match(PeerSet.class, this::onPeerSet)
-        .match(JoinNetwork.class, this::onJoinNetwork)
-        .match(RecoverNetwork.class, this::onRecoverNetwork)
-        .match(RequestItemsForJoin.class, this::onRequestItemsForJoin)
-        .match(RequestItemsForRecovery.class, this::onRequestItemsForRecovery)
-        .match(DataItemsBatch.class, this::onDataItemsBatch)
-        .match(AnnounceJoin.class, this::onAnnounceJoin)
-        .match(AnnounceLeave.class, this::onAnnounceLeave)
-        .match(LeaveNetwork.class, this::onLeaveNetwork)
-        .match(TransferData.class, this::onTransferData)
-        .match(Crash.class, this::onCrash)
-        .build();
-  }
-  
-  // Behavior di JOIN/RECOVERY: nessun Put/Get; gestisce bootstrap e catch-up
-  private Receive joiningRecoveringReceive() {
-    return receiveBuilder()
-        .match(PutRequest.class, m -> getSender().tell(new OperationFailed(m.key, "Node not serving yet"), getSelf()))
-        .match(GetRequest.class, m -> getSender().tell(new OperationFailed(m.key, "Node not serving yet"), getSelf()))
-        .match(GetPeersRequest.class, this::onGetPeersRequest)
-        .match(PeerSet.class, this::onPeerSet)
-        .match(RequestItemsForJoin.class, this::onRequestItemsForJoin)
-        .match(RequestItemsForRecovery.class, this::onRequestItemsForRecovery)
-        .match(DataItemsBatch.class, this::onDataItemsBatch)
-        .match(GetVersionRequest.class, this::onGetVersionRequest)
-        .match(GetVersionResponse.class, this::onGetVersionResponse)
-        .match(ReadTimeout.class, this::onReadTimeout)
-        .match(AnnounceJoin.class, this::onAnnounceJoin)
-        .match(AnnounceLeave.class, this::onAnnounceLeave)
-        .match(TransferData.class, this::onTransferData)
-        .match(JoinNetwork.class, this::onJoinNetwork)
-        .match(RecoverNetwork.class, this::onRecoverNetwork)
-        .match(Crash.class, this::onCrash)
-        .build();
-  }
-  
-  // Behavior di CRASH: ignora tutto, tranne RecoverNetwork
-  private Receive crashedReceive() {
-    return receiveBuilder()
-        .match(RecoverNetwork.class, this::onRecoverNetwork)
-        .matchAny(m -> { /* drop */ })
-        .build();
-  }
-  
-  /** Behavior iniziale = active. */
-  @Override
-  public Receive createReceive() { return activeReceive(); }
-
-  // =====================
   // Message Handlers
   // =====================
 
-  /** Initializes the local membership view and enables serving. */
-  private void onInitPeers(InitPeers msg) {
-    this.peers = new ArrayList<>(msg.peers);
+  private void onJoinGroupMsg(JoinGroupMsg msg) {
+    this.nodes = new ArrayList<>(msg.nodes);
     this.nodeIdMap.clear();
-    this.nodeIdMap.putAll(msg.nodeIds);
+    this.nodeIdMap.putAll(msg.nodeIdMap);
     this.serving = true;
   }
 
-  /** Handles client Put: acts as coordinator, gathers versions, computes new version, writes to replicas with timeout. */
-  private void onPutRequest(PutRequest msg) {
+  /**
+   * Handles client Put: acts as coordinator, gathers versions, computes new
+   * version, writes to replicas with timeout.
+   */
+  private void onUpdateRequest(UpdateRequest msg) {
     if (!serving) {
       getSender().tell(new OperationFailed(msg.key, "Node not serving yet"), getSelf());
       return;
     }
-    System.out.println("[Node " + nodeId + "] Received PutRequest for key=" + msg.key + " value=\"" + msg.value + "\"");
+    logger.log("Received UpdateRequest for key=" + msg.key + " value=\"" + msg.value + "\"");
 
-    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key);
+    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes);
     CoordinatorState state = new CoordinatorState(msg.key, msg.value, getSender(), responsibleNodes);
     activeCoordinators.put(msg.key, state);
 
@@ -492,15 +447,18 @@ public class Node extends AbstractActor {
         ActorRef.noSender());
   }
 
-  /** Handles client Get: acts as coordinator, collects versions, returns the highest with timeout. */
+  /**
+   * Handles client Get: acts as coordinator, collects versions, returns the
+   * highest with timeout.
+   */
   private void onGetRequest(GetRequest msg) {
     if (!serving) {
       getSender().tell(new OperationFailed(msg.key, "Node not serving yet"), getSelf());
       return;
     }
-    System.out.println("[Node " + nodeId + "] Received GetRequest for key=" + msg.key);
+    logger.log("Received GetRequest for key=" + msg.key);
 
-    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key);
+    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes);
     ReadCoordinatorState state = new ReadCoordinatorState(msg.key, getSender());
     activeReadCoordinators.put(msg.key, state);
 
@@ -517,20 +475,22 @@ public class Node extends AbstractActor {
         ActorRef.noSender());
   }
 
-  /** Handles version replies for both write and read coordinations, driving quorum logic. */
+  /**
+   * Handles version replies for both write and read coordinations, driving quorum
+   * logic.
+   */
   private void onGetVersionResponse(GetVersionResponse msg) {
     CoordinatorState writeState = activeCoordinators.get(msg.key);
     if (writeState != null) {
       writeState.versionReplies.put(msg.responder, msg);
 
       String versionsSummary = writeState.versionReplies.entrySet().stream()
-          .map(e -> shortName(e.getKey()) + "=" + e.getValue().version)
+          .map(e -> nodeIdMap.get(e.getKey()) + "=" + e.getValue().version)
           .sorted()
           .reduce((a, b) -> a + ", " + b)
           .orElse("");
 
-      System.out.println("[Node " + nodeId + "] (Write) Version responses: " + versionsSummary);
-
+      logger.log("(Write) Version responses: " + versionsSummary);
       if (writeState.versionReplies.size() >= W && writeState.newVersion == 0) {
         int maxVersion = writeState.versionReplies.values().stream()
             .mapToInt(v -> v.version)
@@ -538,10 +498,10 @@ public class Node extends AbstractActor {
             .orElse(0);
         writeState.newVersion = maxVersion + 1;
 
-        System.out.println("[Node " + nodeId + "] Computed new version " + writeState.newVersion);
+        logger.log("Computed new version " + writeState.newVersion);
 
         for (ActorRef node : writeState.responsibleNodes) {
-          node.tell(new PutValue(writeState.key, writeState.newVersion, writeState.newValue), getSelf());
+          node.tell(new UpdateValue(writeState.key, writeState.newVersion, writeState.newValue), getSelf());
         }
       }
       return;
@@ -552,68 +512,54 @@ public class Node extends AbstractActor {
       readState.versionReplies.put(msg.responder, msg);
 
       String versionsSummary = readState.versionReplies.entrySet().stream()
-          .map(e -> shortName(e.getKey()) + "=" + e.getValue().version)
+          .map(e -> nodeIdMap.get(e.getKey()) + "=" + e.getValue().version)
           .sorted()
           .reduce((a, b) -> a + ", " + b)
           .orElse("");
 
-      System.out.println("[Node " + nodeId + "] (Read) Version responses: " + versionsSummary);
+      logger.log("(Read) Version responses: " + versionsSummary);
 
       if (readState.versionReplies.size() >= R) {
+        // Get the response with the highest version
         GetVersionResponse maxVersionResponse = readState.versionReplies.values().stream()
             .max(Comparator.comparingInt(v -> v.version))
-            .orElse(null);
+            .get(); // safe because map has at least R entries
 
-        if (maxVersionResponse != null) {
-          if (readState.client == getSelf()) {
-            // Maintenance read: aggiorna localmente senza rispondere a client esterno
-            DataItem current = store.get(msg.key);
-            if (current == null || maxVersionResponse.version >= current.version) {
-              store.put(msg.key, new DataItem(maxVersionResponse.version, maxVersionResponse.value));
-              System.out.println("[Node " + nodeId + "] (Maintenance) Refreshed key=" + msg.key +" v=" + maxVersionResponse.version);
-            }
-          } else {
-            System.out.println("[Node " + nodeId + "] (Read) Returning value v=" + maxVersionResponse.version + " to client");
-            readState.client.tell(maxVersionResponse, getSelf());
-          }
-        } else {
-          if (readState.client != getSelf()) {
-            readState.client.tell(new GetVersionResponse(msg.key, 0, null, getSelf()), getSelf());
-          }
+        // Update local store if the version is newer
+        DataItem current = store.get(msg.key);
+        if (current == null || maxVersionResponse.version > current.version) {
+          store.put(msg.key, new DataItem(maxVersionResponse.version, maxVersionResponse.value));
+          logger.log("(Read) Updated local store key=" + msg.key + " v=" + maxVersionResponse.version);
         }
 
+        // Respond to client if this is an external read
+        if (readState.client != getSelf()) {
+          logger.log("(Read) Returning value v=" + maxVersionResponse.version + " to client");
+          readState.client.tell(maxVersionResponse, getSelf());
+        }
+
+        // Cleanup
         activeReadCoordinators.remove(msg.key);
       }
     }
   }
 
-  /** Collects PutAck messages and replies to client once W acks are gathered. */
-  private void onPutAck(PutAck msg) {
+  /**
+   * Collects UpdateAck messages and replies to client once W acks are gathered.
+   */
+  private void onUpdateAck(UpdateAck msg) {
     CoordinatorState state = activeCoordinators.get(msg.key);
     if (state == null)
       return;
 
-    state.putAcks.put(msg.responder, msg);
-    System.out.println("[Node " + nodeId + "] Received PutAck from " + shortName(msg.responder));
+    state.UpdateAcks.put(msg.responder, msg);
+    logger.log("Received UpdateAck from " + nodeIdMap.get(msg.responder));
 
-    if (state.putAcks.size() >= W) {
-      state.client.tell(new PutAck(state.key, state.newVersion, getSelf()), getSelf());
-      System.out
-          .println("[Node " + nodeId + "] Write quorum reached for key " + state.key + ", replying success to client");
+    if (state.UpdateAcks.size() >= W) {
+      state.client.tell(new UpdateAck(state.key, state.newVersion, getSelf()), getSelf());
+      logger.log("Write quorum reached for key " + state.key + ", replying success to client");
 
       activeCoordinators.remove(state.key);
-    }
-  }
-
-  /** Stores a replica value if version is not older (compatibility path). */
-  private void onPutReplica(PutReplica msg) {
-    DataItem current = store.get(msg.key);
-    if (current == null || msg.version >= current.version) {
-      store.put(msg.key, new DataItem(msg.version, msg.value));
-      System.out.println(
-          "[Node " + nodeId + "] Stored key=" + msg.key + " version=" + msg.version + " value=\"" + msg.value + "\"");
-    } else {
-      System.out.println("[Node " + nodeId + "] Ignored older PutReplica for key=" + msg.key);
     }
   }
 
@@ -629,26 +575,29 @@ public class Node extends AbstractActor {
     msg.requester.tell(new GetVersionResponse(msg.key, version, value, getSelf()), getSelf());
   }
 
-  /** Applies a replica write if not older and acknowledges with PutAck. */
-  private void onPutValue(PutValue msg) {
+  /** Applies a replica write if not older and acknowledges with UpdateAck. */
+  private void onUpdateValue(UpdateValue msg) {
     DataItem current = store.get(msg.key);
     if (current == null || msg.version >= current.version) {
       store.put(msg.key, new DataItem(msg.version, msg.value));
-      System.out.println(
-          "[Node " + nodeId + "] Stored key=" + msg.key + " version=" + msg.version + " value=\"" + msg.value + "\"");
+      logger.log(
+          "Stored key=" + msg.key + " version=" + msg.version + " value=\"" + msg.value + "\"");
     } else {
-      System.out.println("[Node " + nodeId + "] Ignored older PutValue for key=" + msg.key);
+      logger.log("Ignored older UpdateValue for key=" + msg.key);
     }
-    getSender().tell(new PutAck(msg.key, msg.version, getSelf()), getSelf());
+    getSender().tell(new UpdateAck(msg.key, msg.version, getSelf()), getSelf());
   }
 
-  /** Handles write timeout: if quorum W not reached, fail client and clean coordinator state. */
+  /**
+   * Handles write timeout: if quorum W not reached, fail client and clean
+   * coordinator state.
+   */
   private void onWriteTimeout(WriteTimeout msg) {
     List<Integer> toRemove = new ArrayList<>();
     for (Map.Entry<Integer, CoordinatorState> entry : activeCoordinators.entrySet()) {
       CoordinatorState state = entry.getValue();
-      if (state.putAcks.size() < W) {
-        System.out.println("[Node " + nodeId + "] WriteTimeout for key " + state.key + ": quorum not reached");
+      if (state.UpdateAcks.size() < W) {
+        logger.log("WriteTimeout for key " + state.key + ": quorum not reached");
         state.client.tell(new OperationFailed(state.key, "Write quorum not reached"), getSelf());
         toRemove.add(entry.getKey());
       }
@@ -656,13 +605,16 @@ public class Node extends AbstractActor {
     toRemove.forEach(activeCoordinators::remove);
   }
 
-  /** Handles read timeout: if quorum R not reached, fail client and clean coordinator state. */
+  /**
+   * Handles read timeout: if quorum R not reached, fail client and clean
+   * coordinator state.
+   */
   private void onReadTimeout(ReadTimeout msg) {
     List<Integer> toRemove = new ArrayList<>();
     for (Map.Entry<Integer, ReadCoordinatorState> entry : activeReadCoordinators.entrySet()) {
       ReadCoordinatorState state = entry.getValue();
       if (state.versionReplies.size() < R) {
-        System.out.println("[Node " + nodeId + "] ReadTimeout for key " + state.key + ": quorum not reached");
+        logger.log("ReadTimeout for key " + state.key + ": quorum not reached");
         state.client.tell(new OperationFailed(state.key, "Read quorum not reached"), getSelf());
         toRemove.add(entry.getKey());
       }
@@ -674,157 +626,194 @@ public class Node extends AbstractActor {
   // Membership & transfer handlers
   // =====================
 
+  private void onNodeAction(NodeAction msg) {
+    if (msg.action.equals("leave")) {
+      logger.log("Received leave request");
+      if (mode != Mode.IDLE) {
+        logger.logError("Cannot leave while not in IDLE mode");
+        return;
+      }
+      this.mode = Mode.CRASHED; // to block client requests
+      this.serving = false;
+      logger.log("Leaving network via manager");
+      manager.tell(new LeaveNode(nodeId), getSelf());
+    }
+
+    else if (msg.action.equals("crash")) {
+      if (mode != Mode.IDLE) {
+        logger.logError("Cannot crash while not in IDLE mode");
+        return;
+      }
+      this.mode = Mode.CRASHED;
+      this.serving = false;
+      logger.log("Crashing node");
+      manager.tell(new CrashNode(nodeId), getSelf());
+    }
+
+    else if (msg.action.equals("recover")) {
+      if (mode != Mode.CRASHED) {
+        logger.logError("Cannot recover while not in CRASHED mode");
+        return;
+      }
+      this.mode = Mode.RECOVERING;
+      this.serving = false;
+      logger.log("Starting RECOVERY via manager");
+      manager.tell(new RecoverNode(nodeId), getSelf());
+    }
+
+    else {
+      logger.logError("Unknown NodeAction: " + msg.action);
+    }
+  }
+
+  private void onAllowJoin(AllowJoin msg) {
+    if (msg.bootstrap == getSelf()) {
+      mode = Mode.IDLE;
+      serving = true;
+      getContext().become(activeReceive());
+      logger.logError("A node cannot bootstrap to itself!");
+    } else {
+      msg.bootstrap.tell(new GetPeersRequest(), getSelf());
+      logger.log("Asked bootstrap node " + nodeIdMap.get(msg.bootstrap) + " for nodes");
+    }
+  }
+
   /** Returns the current membership view to the requester (bootstrap helper). */
   private void onGetPeersRequest(GetPeersRequest msg) {
-    // Risponde con la vista corrente
-    getSender().tell(new PeerSet(new ArrayList<>(peers), new HashMap<>(nodeIdMap)), getSelf());
+    // Answer with current nodes and their IDs
+    getSender().tell(new PeerSet(new ArrayList<>(nodes), new HashMap<>(nodeIdMap)), getSelf());
   }
 
-  /** Handles a PeerSet from bootstrap: complete JOIN/RECOVERY setup or refresh view. */
+  /**
+   * Handles a PeerSet from bootstrap: complete JOIN/RECOVERY setup or refresh
+   * view.
+   */
   private void onPeerSet(PeerSet msg) {
     if (mode == Mode.JOINING) {
-      // Prepara contesto join
-      joinCtx = new JoinContext();
-      joinCtx.oldPeers = new ArrayList<>(msg.peers);
-      joinCtx.updatedMap = new HashMap<>(msg.nodeIds);
-
-      ActorRef successor = findSuccessorOfId(nodeId, joinCtx.oldPeers, joinCtx.updatedMap);
-      joinCtx.successor = successor;
-      this.serving = false;
+      nodes = new ArrayList<>(msg.nodes);
+      nodeIdMap.putAll(msg.nodeIds);
+      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, nodes, nodeIdMap);
 
       if (successor != null) {
-        System.out.println("[Node " + nodeId + "] JOIN: requesting items from " + shortName(successor));
-        successor.tell(new RequestItemsForJoin(nodeId, getSelf()), getSelf());
+        logger.log("JOIN: requesting items from " + nodeIdMap.get(successor));
+        successor.tell(new ItemRequest(getSelf()), getSelf());
       } else {
-        // Primo nodo: adotta vista vuota + sé e diventa operativo
-        System.out.println("[Node " + nodeId + "] JOIN: first node, no successor. Becoming active.");
-        List<ActorRef> updPeers = new ArrayList<>(joinCtx.oldPeers);
-        Map<ActorRef,Integer> updMap = new HashMap<>(joinCtx.updatedMap);
-        updPeers.add(getSelf());
-        updMap.put(getSelf(), nodeId);
-        this.peers = updPeers;
-        this.nodeIdMap.clear();
-        this.nodeIdMap.putAll(updMap);
-        this.serving = true;
-        this.mode = Mode.IDLE;
-        this.joinCtx = null;
+        logger.logError(
+            "JOIN: due specifics of the project, the network has always an active node. Here, no successor has been found => ERROR.");
+        return;
       }
-    } else if (mode == Mode.RECOVERING) {
-      // In recovery: adotta la vista corrente e recupera dal successore
-      this.peers = new ArrayList<>(msg.peers);
-      this.nodeIdMap.clear();
-      this.nodeIdMap.putAll(msg.nodeIds);
-      this.serving = false;
+    }
 
-      ActorRef succ = findSuccessorOfId(nodeId, this.peers, this.nodeIdMap);
-      if (succ != null) {
-        System.out.println("[Node " + nodeId + "] RECOVER: requesting items from " + shortName(succ));
-        succ.tell(new RequestItemsForRecovery(nodeId, getSelf()), getSelf());
-      } else {
-        System.out.println("[Node " + nodeId + "] RECOVER: no peers, becoming active.");
-        this.serving = true;
-        this.mode = Mode.IDLE;
-      }
-    } else {
-      // Aggiorna semplice vista
-      this.peers = new ArrayList<>(msg.peers);
-      this.nodeIdMap.clear();
-      this.nodeIdMap.putAll(msg.nodeIds);
+    else if (mode == Mode.RECOVERING) {
+      receivedResponseForRecovery = 0;
+
+      // pick immediate successor and predecessor
+      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, nodes, nodeIdMap);
+      ActorRef predecessor = RingUtils.findPredecessorOfId(nodeId, nodes, nodeIdMap);
+
+      // send recovery requests
+      logger.log("RECOVER: requesting items from successor " + nodeIdMap.get(successor));
+      successor.tell(new ItemRequest(getSelf()), getSelf());
+
+      logger.log("RECOVER: requesting items from predecessor " + nodeIdMap.get(predecessor));
+      predecessor.tell(new ItemRequest(getSelf()), getSelf());
+    }
+
+    else {
+      logger.log("Received PeerSet in mode " + mode + ", ignoring.");
+      return;
     }
   }
 
-  /** Starts a JOIN procedure by asking a bootstrap node for the current view. */
-  private void onJoinNetwork(JoinNetwork msg) {
-    // Avvio join: richiede la vista a un bootstrap
-    this.mode = Mode.JOINING;
-    this.serving = false;
-    getContext().become(joiningRecoveringReceive());
-    System.out.println("[Node " + nodeId + "] Starting JOIN via " + shortName(msg.bootstrap));
-    msg.bootstrap.tell(new GetPeersRequest(), getSelf());
+  private void onAllowLeave(AllowLeave msg) {
+    if (mode != Mode.CRASHED) {
+      mode = Mode.IDLE;
+      serving = true;
+      getContext().become(activeReceive());
+      logger.logError("Received AllowLeave while not in CRASHED mode");
+      return;
+    }
+    logger.log("TransferData to successor and leaving network");
+
+    List<ActorRef> tempNodes = new ArrayList<>(this.nodes);
+    tempNodes.remove(getSelf());
+
+    for (Map.Entry<Integer, DataItem> e : new ArrayList<>(store.entrySet())) {
+      int key = e.getKey();
+      DataItem di = e.getValue();
+      List<ActorRef> responsible = getResponsibleNodes(key, tempNodes);
+
+      for (ActorRef target : responsible) {
+        target.tell(new TransferData(key, di.version, di.value), getSelf());
+      }
+    }
+
+    // Announce leave to other nodes
+    for (ActorRef p : tempNodes) {
+      p.tell(new AnnounceLeave(getSelf(), nodeId), getSelf());
+    }
+
+    manager.tell(new MarsSystemManager.NodeLeft(nodeId, getSelf()), getSelf());
+    getContext().stop(getSelf()); // stop the actor
   }
 
-  /** Starts a RECOVERY procedure by asking a bootstrap node for the current view. */
-  private void onRecoverNetwork(RecoverNetwork msg) {
-    this.mode = Mode.RECOVERING;
-    this.serving = false;
-    getContext().become(joiningRecoveringReceive());
-    System.out.println("[Node " + nodeId + "] Starting RECOVERY via " + shortName(msg.bootstrap));
-    msg.bootstrap.tell(new GetPeersRequest(), getSelf());
-  }
-
-  /** As the successor of a new node, sends items in the interval (pred(new), new] to it. */
-  private void onRequestItemsForJoin(RequestItemsForJoin req) {
-    // Questo nodo è il successore del nuovo nodo: invia items per (pred(new), new]
-    ActorRef pred = findPredecessorOfId(req.newNodeId, this.peers, this.nodeIdMap);
-    int predId = (pred == null) ? req.newNodeId : this.nodeIdMap.get(pred);
-
+  private void onItemRequest(ItemRequest msg) {
     Map<Integer, DataItem> batch = new LinkedHashMap<>();
+    List<ActorRef> tempNodes = new ArrayList<>(this.nodes);
+    tempNodes.add(msg.targetNode);
+
     for (Map.Entry<Integer, DataItem> e : store.entrySet()) {
       int key = e.getKey();
-      if (inRingIntervalOpenClosed(key, predId, req.newNodeId)) {
+      List<ActorRef> resp = getResponsibleNodes(key, tempNodes);
+      if (resp.contains(msg.targetNode)) {
         batch.put(key, e.getValue());
       }
     }
-    System.out.println("[Node " + nodeId + "] JOIN: sending " + batch.size() + " items to " + shortName(req.newNode));
-    req.newNode.tell(new DataItemsBatch(batch), getSelf());
+
+    logger.log(mode + ": sending " + batch.size() + " items to " + nodeIdMap.get(msg.targetNode));
+    msg.targetNode.tell(new DataItemsBatch(batch), getSelf());
   }
 
-  /** As the successor of a recovering node, sends items in the interval (pred(id), id] to it. */
-  private void onRequestItemsForRecovery(RequestItemsForRecovery req) {
-    // Il successore consegna gli item nel range (pred(req), req]
-    ActorRef pred = findPredecessorOfId(req.requesterId, this.peers, this.nodeIdMap);
-    int predId = (pred == null) ? req.requesterId : this.nodeIdMap.get(pred);
-
-    Map<Integer, DataItem> batch = new LinkedHashMap<>();
-    for (Map.Entry<Integer, DataItem> e : store.entrySet()) {
-      int key = e.getKey();
-      if (inRingIntervalOpenClosed(key, predId, req.requesterId)) {
-        batch.put(key, e.getValue());
-      }
-    }
-    System.out.println("[Node " + nodeId + "] RECOVER: sending " + batch.size() + " items to " + shortName(req.requester));
-    req.requester.tell(new DataItemsBatch(batch), getSelf());
-  }
-
-  /** Processes a batch of items during JOIN/RECOVERY (install, update view, maintenance) or generic transfer. */
+  /**
+   * Processes a batch of items during JOIN/RECOVERY (install, update view,
+   * maintenance) or generic transfer.
+   */
   private void onDataItemsBatch(DataItemsBatch msg) {
     if (mode == Mode.JOINING) {
       // 1) Salva item
+      store.clear();
       for (Map.Entry<Integer, DataItem> e : msg.items.entrySet()) {
         DataItem cur = store.get(e.getKey());
         if (cur == null || e.getValue().version >= cur.version) {
           store.put(e.getKey(), e.getValue());
         }
       }
-      // 2) Applica vista aggiornata (oldPeers + self) usando la mappa ricevuta dal bootstrap
-      List<ActorRef> updatedPeers = new ArrayList<>(joinCtx.oldPeers);
-      Map<ActorRef,Integer> updatedMap = new HashMap<>(joinCtx.updatedMap);
-      updatedPeers.add(getSelf());
-      updatedMap.put(getSelf(), nodeId);
 
-      this.peers = updatedPeers;
-      this.nodeIdMap.clear();
-      this.nodeIdMap.putAll(updatedMap);
-
-      // 3) Maintenance read per ogni key per allineare versione quorum
+      // 2) Maintenance read per ogni key per allineare versione quorum
       for (Integer key : msg.items.keySet()) {
         ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
         activeReadCoordinators.put(key, state);
-        for (ActorRef node : getResponsibleNodes(key)) {
+        for (ActorRef node : getResponsibleNodes(key, nodes)) {
           node.tell(new GetVersionRequest(key, getSelf()), getSelf());
         }
       }
 
+      // 3) Aggiorna vista
+      nodes.add(getSelf());
+      nodeIdMap.put(getSelf(), nodeId);
+
       // 4) Annuncia il join agli altri
-      for (ActorRef p : joinCtx.oldPeers) {
-        p.tell(new AnnounceJoin(getSelf(), nodeId), getSelf());
+      for (ActorRef p : nodes) {
+        if (p != getSelf()) {
+          p.tell(new AnnounceJoin(getSelf(), nodeId), getSelf());
+        }
       }
+      manager.tell(new MarsSystemManager.NodeJoined(nodeId, getSelf()), getSelf());
 
       this.serving = true;
       this.mode = Mode.IDLE;
-      this.joinCtx = null;
       getContext().become(activeReceive());
-      System.out.println("[Node " + nodeId + "] JOIN completed and serving.");
+      logger.log("JOIN completed and serving.");
 
     } else if (mode == Mode.RECOVERING) {
       // 1) Salva item recuperati
@@ -834,20 +823,31 @@ public class Node extends AbstractActor {
           store.put(e.getKey(), e.getValue());
         }
       }
-      // 2) Pruning rispetto alla vista corrente
-      pruneKeysNotResponsible();
-      // 3) Maintenance read su item recuperati
-      for (Integer key : msg.items.keySet()) {
-        ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
-        activeReadCoordinators.put(key, state);
-        for (ActorRef node : getResponsibleNodes(key)) {
-          node.tell(new GetVersionRequest(key, getSelf()), getSelf());
+      receivedResponseForRecovery++;
+
+      // Controlla se abbiamo ricevuto entrambe le risposte
+      if (receivedResponseForRecovery >= 2) {
+        // 2) Pruning rispetto alla vista corrente
+        pruneKeysNotResponsible();
+
+        // 3) Maintenance read su item recuperati
+        for (Integer key : msg.items.keySet()) {
+          ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
+          activeReadCoordinators.put(key, state);
+          for (ActorRef node : getResponsibleNodes(key, nodes)) {
+            node.tell(new GetVersionRequest(key, getSelf()), getSelf());
+          }
         }
+
+        // 4) Aggiorna stato del nodo
+        this.serving = true;
+        this.mode = Mode.IDLE;
+        manager.tell(new MarsSystemManager.NodeRecovered(nodeId, getSelf()), getSelf());
+        getContext().become(activeReceive());
+        logger.log("RECOVERY completed and serving.");
+      } else {
+        logger.log("RECOVER: waiting for more responses (" + receivedResponseForRecovery + "/2)");
       }
-      this.serving = true;
-      this.mode = Mode.IDLE;
-      getContext().become(activeReceive());
-      System.out.println("[Node " + nodeId + "] RECOVERY completed and serving.");
     } else {
       // Batch generico: salva
       for (Map.Entry<Integer, DataItem> e : msg.items.entrySet()) {
@@ -859,100 +859,137 @@ public class Node extends AbstractActor {
     }
   }
 
-  /** Adds a newly joined node to the local view, backfills keys it should now replicate, then prunes. */
+  /**
+   * Adds a newly joined node to the local view, backfills keys it should now
+   * replicate, then prunes.
+   */
   private void onAnnounceJoin(AnnounceJoin msg) {
     if (!nodeIdMap.containsKey(msg.node)) {
-      // 1) Aggiorna la vista
-      peers.add(msg.node);
+      // 1) Update view
+      nodes.add(msg.node);
       nodeIdMap.put(msg.node, msg.nodeId);
 
-      // 2) Backfill: per ogni chiave locale, se il nuovo nodo deve essere tra i responsabili
-      //    e questo nodo NON è più tra i responsabili, invia prima il dato al nuovo nodo.
-      for (Map.Entry<Integer, DataItem> e : new ArrayList<>(store.entrySet())) {
-        int key = e.getKey();
-        List<ActorRef> newResp = getResponsibleNodes(key);
-        boolean newShouldHave = newResp.contains(msg.node);
-        boolean iStillResponsible = newResp.contains(getSelf());
-        if (newShouldHave && !iStillResponsible) {
-          DataItem di = e.getValue();
-          msg.node.tell(new TransferData(key, di.version, di.value), getSelf());
-        }
-      }
-
-      // 3) Solo ora pruna ciò che non è più di competenza
+      // 2) Remove keys that this node is no longer responsible for
       pruneKeysNotResponsible();
-      System.out.println("[Node " + nodeId + "] AnnounceJoin: added " + shortName(msg.node) + " with backfill");
+      logger.log("AnnounceJoin: added " + nodeIdMap.get(msg.node) + " with backfill");
     }
   }
 
   /** Removes a leaving node from the view and prunes non-responsible keys. */
   private void onAnnounceLeave(AnnounceLeave msg) {
     if (nodeIdMap.containsKey(msg.node)) {
-      peers.remove(msg.node);
+      nodes.remove(msg.node);
       nodeIdMap.remove(msg.node);
       // Pruning/ribilanciamento: rimuovi ciò che non è più di competenza
       pruneKeysNotResponsible();
-      System.out.println("[Node " + nodeId + "] AnnounceLeave: removed " + shortName(msg.node));
+      logger.log("AnnounceLeave: removed " + nodeIdMap.get(msg.node));
     }
   }
 
-  /** Gracefully leaves: transfers data to new responsible nodes, announces leave, and stops self. */
-  private void onLeaveNetwork(LeaveNetwork msg) {
-    System.out.println("[Node " + nodeId + "] Leaving network...");
-    // Costruisce vista aggiornata senza di sé
-    List<ActorRef> updatedPeers = new ArrayList<>(peers);
-    updatedPeers.remove(getSelf());
-    Map<ActorRef,Integer> updatedMap = new HashMap<>(nodeIdMap);
-    updatedMap.remove(getSelf());
-
-    // Trasferisce i dati ai nuovi responsabili
-    for (Map.Entry<Integer, DataItem> e : new ArrayList<>(store.entrySet())) {
-      int key = e.getKey();
-      DataItem di = e.getValue();
-      // Calcola responsabili nella vista senza di sé
-      List<ActorRef> sorted = sortPeersById(updatedPeers, updatedMap);
-      if (!sorted.isEmpty()) {
-        // Primo responsabile: startIndex come in getResponsibleNodes ma con vista aggiornata
-        long unsignedKey = key & 0xFFFFFFFFL;
-        int startIndex = 0; boolean found = false;
-        for (int i = 0; i < sorted.size(); i++) {
-          long nodeKey = updatedMap.get(sorted.get(i)) & 0xFFFFFFFFL;
-          if (nodeKey >= unsignedKey) { startIndex = i; found = true; break; }
-        }
-        if (!found) startIndex = 0;
-        int rf = Math.min(N, sorted.size());
-        for (int i = 0; i < rf; i++) {
-          ActorRef target = sorted.get((startIndex + i) % sorted.size());
-          target.tell(new TransferData(key, di.version, di.value), getSelf());
-        }
-      }
-    }
-
-    // Annuncia la leave
-    for (ActorRef p : peers) {
-      if (p != getSelf()) {
-        p.tell(new AnnounceLeave(getSelf(), nodeId), getSelf());
-      }
-    }
-
-    // Ferma l'attore
-    context().stop(getSelf());
-  }
-
-  /** Accepts a transferred key/value and installs it if version is newer or equal. */
+  /**
+   * Accepts a transferred key/value and installs it if version is newer or equal.
+   */
   private void onTransferData(TransferData msg) {
     DataItem cur = store.get(msg.key);
     if (cur == null || msg.version >= cur.version) {
       store.put(msg.key, new DataItem(msg.version, msg.value));
-      System.out.println("[Node " + nodeId + "] Received transfer key=" + msg.key + " v=" + msg.version);
+      logger.log("Received transfer key=" + msg.key + " v=" + msg.version);
     }
   }
 
-  /** Simulates a temporary crash: stop serving and ignore all messages until recovery. */
-  private void onCrash(Crash msg) {
-    System.out.println("[Node " + nodeId + "] Simulating CRASH (temporarily unavailable)");
-    this.mode = Mode.CRASHED;
-    this.serving = false;
+  /**
+   * Simulates a temporary crash: stop serving and ignore all messages until
+   * recovery.
+   */
+  private void onAllowCrash(AllowCrash msg) {
+    if (mode != Mode.CRASHED) {
+      mode = Mode.IDLE;
+      serving = true;
+      getContext().become(activeReceive());
+      logger.logError("Received AllowCrash while not in CRASHED mode");
+      return;
+    }
+    logger.log("Simulating CRASH (temporarily unavailable)");
     getContext().become(crashedReceive());
+    manager.tell(new MarsSystemManager.NodeCrashed(nodeId, getSelf()), getSelf());
+  }
+
+  private void onAllowRecover(AllowRecover msg) {
+    if (mode != Mode.RECOVERING) {
+      mode = Mode.CRASHED;
+      serving = false;
+      getContext().become(crashedReceive());
+      logger.logError("Received AllowRecover while not in RECOVERING mode");
+    }
+
+    logger.log("Allowed to RECOVER via " + nodeIdMap.get(msg.bootstrap));
+    getContext().become(joiningRecoveringReceive());
+    msg.bootstrap.tell(new GetPeersRequest(), getSelf());
+  }
+
+  // =====================
+  // Actor Lifecycle: behaviors
+  // =====================
+
+  // Behavior operativo: gestisce tutte le richieste
+  private Receive activeReceive() {
+    return receiveBuilder()
+        .match(JoinGroupMsg.class, this::onJoinGroupMsg)
+
+        .match(UpdateRequest.class, this::onUpdateRequest)
+        .match(UpdateValue.class, this::onUpdateValue)
+        .match(UpdateAck.class, this::onUpdateAck)
+
+        .match(GetRequest.class, this::onGetRequest)
+
+        .match(GetVersionRequest.class, this::onGetVersionRequest)
+        .match(GetVersionResponse.class, this::onGetVersionResponse)
+
+        .match(WriteTimeout.class, this::onWriteTimeout)
+        .match(ReadTimeout.class, this::onReadTimeout)
+        // Membership & transfer
+        .match(NodeAction.class, this::onNodeAction)
+
+        .match(GetPeersRequest.class, this::onGetPeersRequest)
+
+        .match(AllowLeave.class, this::onAllowLeave)
+        .match(AllowCrash.class, this::onAllowCrash)
+
+        .match(ItemRequest.class, this::onItemRequest)
+        .match(AnnounceJoin.class, this::onAnnounceJoin)
+        .match(AnnounceLeave.class, this::onAnnounceLeave)
+        .match(TransferData.class, this::onTransferData)
+        .build();
+  }
+
+  // Behavior di JOIN/RECOVERY: nessun Put/Get; gestisce bootstrap e catch-up
+  private Receive joiningRecoveringReceive() {
+    return receiveBuilder()
+        .match(AllowJoin.class, this::onAllowJoin)
+        .match(PeerSet.class, this::onPeerSet)
+        .match(DataItemsBatch.class, this::onDataItemsBatch)
+        .match(GetVersionRequest.class, this::onGetVersionRequest)
+        .match(GetVersionResponse.class, this::onGetVersionResponse)
+
+        .match(ReadTimeout.class, this::onReadTimeout)
+        
+        .match(GetRequest.class, this::onGetRequest)
+        .match(UpdateRequest.class, this::onUpdateRequest)
+        .build();
+  }
+
+  // Behavior di CRASH: ignora tutto, tranne RecoverNetwork
+  private Receive crashedReceive() {
+    return receiveBuilder()
+        .match(AllowRecover.class, this::onAllowRecover)
+        .matchAny(m -> {
+          /* drop */ })
+        .build();
+  }
+
+  /** Behavior iniziale = active. */
+  @Override
+  public Receive createReceive() {
+    return activeReceive();
   }
 }

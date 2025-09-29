@@ -2,344 +2,318 @@ package it.unitn;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import scala.concurrent.duration.Duration;
+import it.unitn.Node.JoinGroupMsg;
 
 /**
  * Central manager for the Mars distributed storage system.
- * Handles node lifecycle (join/leave/crash/recovery), client creation,
- * and orchestrates test scenarios according to project specifications.
+ * Handles node lifecycle (join/leave/crash/recovery), and orchestrates test
+ * scenarios according to project specifications.
  */
 public class MarsSystemManager extends AbstractActor {
-  
-  private final int N, R, W; // Replication parameters
+
+  private static final Logger logger = new Logger("MarsSystemManager");
   private final Random random = new Random();
-  
-  // System state
-  private final List<ActorRef> activeNodes = new ArrayList<>();
-  private final List<ActorRef> crashedNodes = new ArrayList<>();
-  private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>();
-  private final List<ActorRef> clients = new ArrayList<>();
-  
-  // Node ID counter for creating new nodes
-  private int nextNodeId = 0;
-  
+
+  /** System state **/
+  private final List<ActorRef> activeNodes;
+  private final List<ActorRef> crashedNodes;
+  private final Map<ActorRef, Integer> nodeIdMap;
+  private int viewId;
+  private boolean isViewChangedStable;
+
   /** Constructs the manager with replication parameters. */
-  public MarsSystemManager(int N, int R, int W) {
-    this.N = N;
-    this.R = R;
-    this.W = W;
+  public MarsSystemManager() {
+    this.activeNodes = new ArrayList<>();
+    this.crashedNodes = new ArrayList<>();
+    this.nodeIdMap = new HashMap<>();
+    this.viewId = 0;
+    this.isViewChangedStable = true;
   }
 
   /** Akka factory method to create Props for this actor. */
-  public static Props props(int N, int R, int W) {
-    return Props.create(MarsSystemManager.class, () -> new MarsSystemManager(N, R, W));
+  public static Props props() {
+    return Props.create(MarsSystemManager.class, MarsSystemManager::new);
   }
 
   // =====================
   // Message Classes
   // =====================
 
-  /** Initialize the system with a given number of nodes. */
-  public static class InitializeSystem implements Serializable {
-    public final int initialNodeCount;
-    public InitializeSystem(int initialNodeCount) { this.initialNodeCount = initialNodeCount; }
+  public static class JoinNode implements Serializable {
+    public final int nodeId;
+
+    public JoinNode(int nodeId) {
+      this.nodeId = nodeId;
+    }
   }
 
-  /** Create a new client actor. */
-  public static class CreateClient implements Serializable {}
+  public static class NodeJoined implements Serializable {
+    public final int nodeId;
+    public final ActorRef nodeRef;
 
-  /** Add a new node to the system (JOIN). */
-  public static class AddNode implements Serializable {
-    public final int nodeId; // Optional: specify nodeId, or -1 for auto-assign
-    public AddNode(int nodeId) { this.nodeId = nodeId; }
-    public AddNode() { this.nodeId = -1; } // Auto-assign
+    public NodeJoined(int nodeId, ActorRef nodeRef) {
+      this.nodeId = nodeId;
+      this.nodeRef = nodeRef;
+    }
   }
 
-  /** Remove a node from the system (LEAVE). */
-  public static class RemoveNode implements Serializable {
-    public final int nodeId; // -1 for random
-    public RemoveNode(int nodeId) { this.nodeId = nodeId; }
-    public RemoveNode() { this.nodeId = -1; } // Random
+  public static class LeaveNode implements Serializable {
+    public final int nodeId;
+
+    public LeaveNode(int nodeId) {
+      this.nodeId = nodeId;
+    }
+  }
+
+  public static class NodeLeft implements Serializable {
+    public final int nodeId;
+    public final ActorRef nodeRef;
+
+    public NodeLeft(int nodeId, ActorRef nodeRef) {
+      this.nodeId = nodeId;
+      this.nodeRef = nodeRef;
+    }
   }
 
   /** Crash a node temporarily. */
   public static class CrashNode implements Serializable {
-    public final int nodeId; // -1 for random
-    public CrashNode(int nodeId) { this.nodeId = nodeId; }
-    public CrashNode() { this.nodeId = -1; } // Random
+    public final int nodeId;
+
+    public CrashNode(int nodeId) {
+      this.nodeId = nodeId;
+    }
+  }
+
+  public static class NodeCrashed implements Serializable {
+    public final int nodeId;
+    public final ActorRef nodeRef;
+
+    public NodeCrashed(int nodeId, ActorRef nodeRef) {
+      this.nodeId = nodeId;
+      this.nodeRef = nodeRef;
+    }
   }
 
   /** Recover a crashed node. */
   public static class RecoverNode implements Serializable {
-    public final int nodeId; // -1 for random crashed node
-    public RecoverNode(int nodeId) { this.nodeId = nodeId; }
-    public RecoverNode() { this.nodeId = -1; } // Random crashed
+    public final int nodeId;
+
+    public RecoverNode(int nodeId) {
+      this.nodeId = nodeId;
+    }
   }
 
-  /** Send a Put request via a random client. */
-  public static class TestPut implements Serializable {
-    public final int key;
-    public final String value;
-    public TestPut(int key, String value) { this.key = key; this.value = value; }
-  }
+  public static class NodeRecovered implements Serializable {
+    public final int nodeId;
+    public final ActorRef nodeRef;
 
-  /** Send a Get request via a random client. */
-  public static class TestGet implements Serializable {
-    public final int key;
-    public TestGet(int key) { this.key = key; }
+    public NodeRecovered(int nodeId, ActorRef nodeRef) {
+      this.nodeId = nodeId;
+      this.nodeRef = nodeRef;
+    }
   }
 
   /** Get current system status. */
-  public static class GetSystemStatus implements Serializable {}
+  public static class GetSystemStatus implements Serializable {
+  }
 
   /** Response with current system status. */
   public static class SystemStatus implements Serializable {
     public final int activeNodeCount;
     public final int crashedNodeCount;
-    public final int clientCount;
     public final String nodeIds;
-    
-    public SystemStatus(int activeNodeCount, int crashedNodeCount, int clientCount, String nodeIds) {
+
+    public SystemStatus(int activeNodeCount, int crashedNodeCount, String nodeIds) {
+      // public SystemStatus(int activeNodeCount, int crashedNodeCount, int
+      // String nodeIds) {
       this.activeNodeCount = activeNodeCount;
       this.crashedNodeCount = crashedNodeCount;
-      this.clientCount = clientCount;
       this.nodeIds = nodeIds;
     }
-  }
-
-  // =====================
-  // Actor Lifecycle
-  // =====================
-
-  /** Message routing for the manager. */
-  @Override
-  public Receive createReceive() {
-    return receiveBuilder()
-        .match(InitializeSystem.class, this::onInitializeSystem)
-        .match(CreateClient.class, this::onCreateClient)
-        .match(AddNode.class, this::onAddNode)
-        .match(RemoveNode.class, this::onRemoveNode)
-        .match(CrashNode.class, this::onCrashNode)
-        .match(RecoverNode.class, this::onRecoverNode)
-        .match(TestPut.class, this::onTestPut)
-        .match(TestGet.class, this::onTestGet)
-        .match(GetSystemStatus.class, this::onGetSystemStatus)
-        .match(UpdateClientNodeLists.class, this::onUpdateClientNodeLists)
-        .build();
   }
 
   // =====================
   // Message Handlers
   // =====================
 
-  /** Initializes the system with the specified number of initial nodes. */
-  private void onInitializeSystem(InitializeSystem msg) {
-    System.out.println("[MarsSystemManager] Initializing system with " + msg.initialNodeCount + " nodes");
-    System.out.println("[MarsSystemManager] Configuration: N=" + N + ", R=" + R + ", W=" + W);
-    
-    // Clear existing state
-    activeNodes.clear();
-    crashedNodes.clear();
-    nodeIdMap.clear();
-    clients.clear();
-    
-    // Create initial nodes
-    for (int i = 0; i < msg.initialNodeCount; i++) {
-      int nodeId = i * 10; // Space out node IDs: 0, 10, 20, 30, ...
-      String nodeName = "node" + i;
-      ActorRef node = context().actorOf(Node.props(nodeId, N, R, W), nodeName);
-      activeNodes.add(node);
-      nodeIdMap.put(node, nodeId);
-      nextNodeId = Math.max(nextNodeId, nodeId + 10);
+  private void onJoinGroupMsg(JoinGroupMsg msg) {
+    activeNodes.addAll(msg.nodes);
+    for (ActorRef node : msg.nodes) {
+      nodeIdMap.put(node, msg.nodeIdMap.get(node));
     }
-    
-    // Initialize peer lists for all nodes
-    updateAllNodePeers();
-    
-    System.out.println("[MarsSystemManager] System initialized with " + activeNodes.size() + " active nodes");
-    logSystemStatus();
   }
 
-  /** Creates a new client actor. */
-  private void onCreateClient(CreateClient msg) {
-    if (activeNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] Cannot create client: no active nodes");
+  private void onJoinNode(JoinNode msg) {
+    if (!isViewChangedStable) {
+      logger.logError("View change in progress, cannot join new node now.");
       return;
     }
-    
-    String clientName = "client" + clients.size();
-    ActorRef client = context().actorOf(Props.create(Client.class, new ArrayList<>(activeNodes)), clientName);
-    clients.add(client);
-    
-    System.out.println("[MarsSystemManager] Created " + clientName + " with access to " + activeNodes.size() + " nodes");
-  }
 
-  /** Adds a new node to the system via JOIN protocol. */
-  private void onAddNode(AddNode msg) {
-    if (activeNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] Cannot add node: no bootstrap nodes available");
-      return;
-    }
-    int nodeId = (msg.nodeId == -1) ? nextNodeId : msg.nodeId;
-    if (msg.nodeId == -1) nextNodeId += 10;
-    if (nodeIdMap.containsValue(nodeId)) {
-      System.out.println("[MarsSystemManager] NodeId " + nodeId + " already exists, skipping add");
-      return;
-    }
-    String nodeName = "node_join_" + nodeId;
-    ActorRef newNode = context().actorOf(Node.props(nodeId, N, R, W), nodeName);
+    // Choose a random existing node as bootstrap
+    ActorRef newNode = getSender();
     ActorRef bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
-    System.out.println("[MarsSystemManager] Adding node " + nodeId + " via bootstrap " + Node.shortName(bootstrap));
-    newNode.tell(new Node.JoinNetwork(bootstrap), self());
-    activeNodes.add(newNode);
-    nodeIdMap.put(newNode, nodeId);
+    ActorRef succ = RingUtils.findSuccessorOfId(msg.nodeId, activeNodes, nodeIdMap);
+    if (succ == null) {
+      logger.logError("Cannot join: no suitable bootstrap node found");
+      return;
+    }
 
-    // Aggiorna client e vista peer dopo il join
-    context().system().scheduler().scheduleOnce(
-        Duration.create(2, TimeUnit.SECONDS),
-        self(),
-        new UpdateClientNodeLists(),
-        context().dispatcher(),
-        self());
+    isViewChangedStable = false;
+    newNode.tell(new Node.AllowJoin(msg.nodeId, bootstrap), self());
   }
 
-  /** Removes a node from the system via LEAVE protocol. */
-  private void onRemoveNode(RemoveNode msg) {
-    if (activeNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] No active nodes to remove");
-      return;
-    }
-    if (activeNodes.size() <= 1) {
-      System.out.println("[MarsSystemManager] Refusing to remove the last active node");
-      return;
-    }
-    ActorRef nodeToRemove;
-    if (msg.nodeId == -1) {
-      nodeToRemove = activeNodes.get(random.nextInt(activeNodes.size()));
-    } else {
-      nodeToRemove = findNodeByNodeId(msg.nodeId);
-      if (nodeToRemove == null) {
-        System.out.println("[MarsSystemManager] Node " + msg.nodeId + " not found in active nodes");
-        return;
-      }
-    }
-    int nodeId = nodeIdMap.get(nodeToRemove);
-    System.out.println("[MarsSystemManager] Requesting LEAVE for node " + nodeId);
-    nodeToRemove.tell(new Node.LeaveNetwork(), self());
-    activeNodes.remove(nodeToRemove);
-    nodeIdMap.remove(nodeToRemove);
+  private void onNodeJoined(NodeJoined msg) {
+    ActorRef newNode = msg.nodeRef;
+    int nodeId = msg.nodeId;
 
-    context().system().scheduler().scheduleOnce(
-        Duration.create(2, TimeUnit.SECONDS),
-        self(),
-        new UpdateClientNodeLists(),
-        context().dispatcher(),
-        self());
+    if (nodeIdMap.containsKey(newNode)) {
+      logger.logError("Node " + nodeId + " already in the system");
+      return;
+    }
+
+    isViewChangedStable = true;
+    nodeIdMap.put(newNode, nodeId);
+    activeNodes.add(newNode);
+    viewId++;
+    logger.log("JOIN completed: ViewId=" + viewId + ", Node " + nodeId + " joined the system");
+  }
+
+  private void onLeaveNode(LeaveNode msg) {
+    if (!isViewChangedStable) {
+      logger.logError("View change in progress, cannot leave node now.");
+      return;
+    }
+
+    if (activeNodes.size() <= 1) {
+      logger.logError("Refusing to leave the last active node");
+      return;
+    }
+
+    ActorRef nodeToLeave = findNodeById(activeNodes, msg.nodeId);
+    if (nodeToLeave == null) {
+      logger.log("Node " + msg.nodeId + " not found in active nodes");
+      return;
+    }
+
+    logger.log("Allow leaving for node " + msg.nodeId);
+    isViewChangedStable = false;
+    nodeToLeave.tell(new Node.AllowLeave(), self());
+  }
+
+  private void onNodeLeft(NodeLeft msg) {
+    ActorRef nodeLeft = msg.nodeRef;
+    int nodeId = msg.nodeId;
+
+    if (!nodeIdMap.containsKey(nodeLeft)) {
+      logger.logError("Node " + nodeId + " not found in system during NodeLeft");
+      return;
+    }
+
+    activeNodes.remove(nodeLeft);
+    nodeIdMap.remove(nodeLeft);
+    isViewChangedStable = true;
+    viewId++;
+    logger.log("LEAVE completed: ViewId=" + viewId + ", Node " + nodeId + " left the system");
   }
 
   /** Crashes a node temporarily (simulates failure). */
   private void onCrashNode(CrashNode msg) {
-    if (activeNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] No active nodes to crash");
+    if (!isViewChangedStable) {
+      logger.logError("View change in progress, cannot crash node now.");
       return;
     }
-    if (activeNodes.size() <= 1) {
-      System.out.println("[MarsSystemManager] Refusing to crash the last active node");
-      return;
-    }
-    ActorRef nodeToCrash;
-    if (msg.nodeId == -1) {
-      nodeToCrash = activeNodes.get(random.nextInt(activeNodes.size()));
-    } else {
-      nodeToCrash = findNodeByNodeId(msg.nodeId);
-      if (nodeToCrash == null) {
-        System.out.println("[MarsSystemManager] Node " + msg.nodeId + " not found in active nodes");
-        return;
-      }
-    }
-    int nodeId = nodeIdMap.get(nodeToCrash);
-    System.out.println("[MarsSystemManager] Crashing node " + nodeId);
-    nodeToCrash.tell(new Node.Crash(), self());
-    activeNodes.remove(nodeToCrash);
-    crashedNodes.add(nodeToCrash);
 
-    // Aggiorna immediatamente i client (rimuove il nodo crashed dalla lista)
-    updateClientNodeLists();
-    // Aggiorna vista peer (opzionale, utile per test)
-    updateAllNodePeers();
+    if (activeNodes.size() <= 1) {
+      logger.logError("Refusing to crash the last active node");
+      return;
+    }
+
+    ActorRef nodeToCrash = findNodeById(activeNodes, msg.nodeId);
+    if (nodeToCrash == null) {
+      logger.log("Node " + msg.nodeId + " not found in active nodes");
+      return;
+    }
+
+    isViewChangedStable = false;
+    logger.log("Crashing node " + msg.nodeId);
+    nodeToCrash.tell(new Node.AllowCrash(), self());
+  }
+
+  private void onNodeCrashed(NodeCrashed msg) {
+    ActorRef nodeCrashed = msg.nodeRef;
+    int nodeId = msg.nodeId;
+
+    if (!nodeIdMap.containsKey(nodeCrashed)) {
+      logger.logError("Node " + nodeId + " not found in system during NodeCrashed");
+      return;
+    }
+
+    isViewChangedStable = true;
+    activeNodes.remove(nodeCrashed);
+    crashedNodes.add(nodeCrashed);
+    logger.log("CRASH completed: ViewId=" + viewId + ", Node " + nodeId + " crashed");
   }
 
   /** Recovers a crashed node. */
   private void onRecoverNode(RecoverNode msg) {
+    if (!isViewChangedStable) {
+      logger.logError("View change in progress, cannot recover node now.");
+      return;
+    }
+
     if (crashedNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] No crashed nodes to recover");
+      logger.logError("No crashed nodes to recover");
       return;
     }
+
     if (activeNodes.isEmpty()) {
-      System.out.println("[MarsSystemManager] Cannot recover: no active nodes for bootstrap");
+      logger.logError("Cannot recover: no active nodes for bootstrap");
       return;
     }
-    ActorRef nodeToRecover;
-    if (msg.nodeId == -1) {
-      nodeToRecover = crashedNodes.get(random.nextInt(crashedNodes.size()));
-    } else {
-      nodeToRecover = null;
-      for (ActorRef node : crashedNodes) {
-        if (nodeIdMap.get(node) == msg.nodeId) {
-          nodeToRecover = node; break;
-        }
-      }
-      if (nodeToRecover == null) {
-        System.out.println("[MarsSystemManager] Crashed node " + msg.nodeId + " not found");
-        return;
-      }
+
+    ActorRef nodeToRecover = findNodeById(crashedNodes, msg.nodeId);
+    if (nodeToRecover == null) {
+      logger.log("Node " + msg.nodeId + " not found in crashed nodes, searching...");
+      return;
     }
-    int nodeId = nodeIdMap.get(nodeToRecover);
+
+    ActorRef succ = RingUtils.findSuccessorOfId(msg.nodeId, activeNodes, nodeIdMap);
+    ActorRef pred = RingUtils.findPredecessorOfId(msg.nodeId, activeNodes, nodeIdMap);
+
+    if (succ == null || pred == null) {
+      logger.logError("Cannot recover: no suitable bootstrap node found");
+      return;
+    }
+
     ActorRef bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
-    System.out.println("[MarsSystemManager] Recovering node " + nodeId + " via bootstrap " + Node.shortName(bootstrap));
-    nodeToRecover.tell(new Node.RecoverNetwork(bootstrap), self());
-    crashedNodes.remove(nodeToRecover);
-    activeNodes.add(nodeToRecover);
-
-    context().system().scheduler().scheduleOnce(
-        Duration.create(2, TimeUnit.SECONDS),
-        self(),
-        new UpdateClientNodeLists(),
-        context().dispatcher(),
-        self());
+    logger.log("Recovering node " + nodeIdMap.getOrDefault(nodeToRecover, -1) + " via bootstrap "
+        + nodeIdMap.getOrDefault(bootstrap, -1));
+    isViewChangedStable = false;
+    nodeToRecover.tell(new Node.AllowRecover(bootstrap), self());
   }
 
-  /** Sends a Put request via a random client. */
-  private void onTestPut(TestPut msg) {
-    if (clients.isEmpty()) {
-      System.out.println("[MarsSystemManager] No clients available for Put test");
-      return;
-    }
-    
-    ActorRef client = clients.get(random.nextInt(clients.size()));
-    System.out.println("[MarsSystemManager] Sending Put(key=" + msg.key + ", value=\"" + msg.value + "\") via client");
-    client.tell(new Client.Update(msg.key, msg.value), self());
-  }
+  private void onNodeRecovered(NodeRecovered msg) {
+    ActorRef nodeRecovered = msg.nodeRef;
+    int nodeId = msg.nodeId;
 
-  /** Sends a Get request via a random client. */
-  private void onTestGet(TestGet msg) {
-    if (clients.isEmpty()) {
-      System.out.println("[MarsSystemManager] No clients available for Get test");
+    if (!nodeIdMap.containsKey(nodeRecovered)) {
+      logger.logError("Node " + nodeId + " not found in system during NodeRecovered");
       return;
     }
-    
-    ActorRef client = clients.get(random.nextInt(clients.size()));
-    System.out.println("[MarsSystemManager] Sending Get(key=" + msg.key + ") via client");
-    client.tell(new Client.Get(msg.key), self());
+
+    isViewChangedStable = true;
+    crashedNodes.remove(nodeRecovered);
+    activeNodes.add(nodeRecovered);
+    logger.log("RECOVER completed: ViewId=" + viewId + ", Node " + nodeId + " recovered");
   }
 
   /** Returns current system status. */
@@ -352,12 +326,10 @@ public class MarsSystemManager extends AbstractActor {
     SystemStatus status = new SystemStatus(
         activeNodes.size(),
         crashedNodes.size(),
-        clients.size(),
-        nodeIds
-    );
+        nodeIds);
 
     ActorRef replyTo = getSender();
-    // Evita dead letters: se il sender è deadLetters, non rispondere
+    // Avoid dead letters: do not reply if the sender is deadLetters
     if (!replyTo.equals(getContext().getSystem().deadLetters())) {
       replyTo.tell(status, self());
     }
@@ -368,38 +340,47 @@ public class MarsSystemManager extends AbstractActor {
   // Helper Methods
   // =====================
 
-  /** Internal message to update client node lists. */
-  private static class UpdateClientNodeLists implements Serializable {}
+  public class RingUtils {
+    /**
+     * Finds the successor peer for a given id (first peer with id >= given id, with
+     * wrap).
+     */
+    public static ActorRef findSuccessorOfId(int id, List<ActorRef> list, Map<ActorRef, Integer> map) {
+      List<ActorRef> sorted = new ArrayList<>(list);
+      sorted.sort(Comparator.comparingInt(map::get));
 
-  /** Updates all client actors with the current active node list. */
-  private void onUpdateClientNodeLists(UpdateClientNodeLists msg) {
-    updateClientNodeLists();
-    updateAllNodePeers();
-  }
-
-  /** Updates all client actors with the current active node list. */
-  private void updateClientNodeLists() {
-    for (ActorRef client : clients) {
-      client.tell(new Client.UpdateNodeList(new ArrayList<>(activeNodes)), self());
-    }
-  }
-
-  /** Updates peer lists for all active nodes. */
-  private void updateAllNodePeers() {
-    Node.InitPeers initMsg = new Node.InitPeers(new ArrayList<>(activeNodes), new HashMap<>(nodeIdMap));
-    for (ActorRef node : activeNodes) {
-      node.tell(initMsg, self());
-    }
-  }
-
-  /** Finds a node by its nodeId. */
-  private ActorRef findNodeByNodeId(int nodeId) {
-    for (Map.Entry<ActorRef, Integer> entry : nodeIdMap.entrySet()) {
-      if (entry.getValue() == nodeId) {
-        return entry.getKey();
+      for (ActorRef p : sorted) {
+        if (map.get(p) >= id)
+          return p;
       }
+      return sorted.isEmpty() ? null : sorted.get(0);
     }
-    return null;
+
+    /**
+     * Finds the predecessor peer for a given id (largest id < given id, or last on
+     * wrap).
+     */
+    public static ActorRef findPredecessorOfId(int id, List<ActorRef> list, Map<ActorRef, Integer> map) {
+      List<ActorRef> sorted = new ArrayList<>(list);
+      sorted.sort(Comparator.comparingInt(map::get));
+
+      ActorRef pred = null;
+      int predId = Integer.MIN_VALUE;
+      for (ActorRef p : sorted) {
+        int pid = map.get(p);
+        if (pid < id && pid > predId) {
+          predId = pid;
+          pred = p;
+        }
+      }
+      if (pred != null)
+        return pred;
+      return sorted.isEmpty() ? null : sorted.get(sorted.size() - 1);
+    }
+  }
+
+  private ActorRef findNodeById(List<ActorRef> nodes, int nodeId) {
+    return nodes.stream().filter(n -> nodeIdMap.get(n) == nodeId).findFirst().orElse(null);
   }
 
   /** Logs current system status. */
@@ -407,8 +388,7 @@ public class MarsSystemManager extends AbstractActor {
     System.out.println("[MarsSystemManager] === SYSTEM STATUS ===");
     System.out.println("[MarsSystemManager] Active nodes: " + activeNodes.size());
     System.out.println("[MarsSystemManager] Crashed nodes: " + crashedNodes.size());
-    System.out.println("[MarsSystemManager] Clients: " + clients.size());
-    
+
     if (!activeNodes.isEmpty()) {
       String activeIds = activeNodes.stream()
           .map(node -> String.valueOf(nodeIdMap.get(node)))
@@ -416,7 +396,7 @@ public class MarsSystemManager extends AbstractActor {
           .orElse("");
       System.out.println("[MarsSystemManager] Active node IDs: [" + activeIds + "]");
     }
-    
+
     if (!crashedNodes.isEmpty()) {
       String crashedIds = crashedNodes.stream()
           .map(node -> String.valueOf(nodeIdMap.get(node)))
@@ -424,7 +404,33 @@ public class MarsSystemManager extends AbstractActor {
           .orElse("");
       System.out.println("[MarsSystemManager] Crashed node IDs: [" + crashedIds + "]");
     }
-    
+
     System.out.println("[MarsSystemManager] =====================");
+  }
+
+  // =====================
+  // Actor Lifecycle
+  // =====================
+
+  /** Message routing for the manager. */
+  @Override
+  public Receive createReceive() {
+    return receiveBuilder()
+        .match(JoinGroupMsg.class, this::onJoinGroupMsg)
+
+        .match(JoinNode.class, this::onJoinNode)
+        .match(NodeJoined.class, this::onNodeJoined)
+
+        .match(LeaveNode.class, this::onLeaveNode)
+        .match(NodeLeft.class, this::onNodeLeft)
+
+        .match(CrashNode.class, this::onCrashNode)
+        .match(NodeCrashed.class, this::onNodeCrashed)
+
+        .match(RecoverNode.class, this::onRecoverNode)
+        .match(NodeRecovered.class, this::onNodeRecovered)
+
+        .match(GetSystemStatus.class, this::onGetSystemStatus)
+        .build();
   }
 }
