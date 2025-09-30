@@ -33,7 +33,7 @@ public class Main {
 
     final int N = Integer.parseInt(config.getProperty("N", "5")); // Replication factor
     final int R = Integer.parseInt(config.getProperty("R", "3"));
-    final int W = Integer.parseInt(config.getProperty("W", "2"));
+    final int W = Integer.parseInt(config.getProperty("W", "4"));
 
     logger.log("=== Mars Distributed Storage System ===");
     logger.log("Configuration: N=" + N + ", R=" + R + ", W=" + W);
@@ -73,7 +73,7 @@ public class Main {
     // Test Scenario 1: Multiple clients with concurrent requests
     logger.log("\n=== TEST 1: Multiple Clients + Concurrent Requests ===");
     testMultipleClientsScenario(system, manager, clients, activeNodes);
-
+    System.exit(0);
     // Test Scenario 2: Join/Leave operations
     logger.log("\n=== TEST 2: Node Join/Leave Operations ===");
     // testJoinLeaveScenario(system, manager, activeNodes, clients, crashedNodes, nodeIdMap, N, R, W);

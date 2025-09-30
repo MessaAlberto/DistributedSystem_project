@@ -6,7 +6,7 @@ On Node
 - [x] add ring logic for saving info 
       (già fatto con getResponsibleNodes e % size)
 
-- [ ] add join/leave/crash/recovery logic (view changes with central manager) (lab 3)
+- [x] add join/leave/crash/recovery logic (view changes with central manager) (lab 3)
 - [x] set 2 message dispatchers (one for active node, one for inactive node)
 
 On Client

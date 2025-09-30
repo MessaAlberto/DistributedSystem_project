@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
+import akka.actor.Cancellable;
 import akka.actor.Props;
 import it.unitn.MarsSystemManager.CrashNode;
 import it.unitn.MarsSystemManager.JoinNode;
@@ -42,6 +43,14 @@ public class Node extends AbstractActor {
 
   // Timeout duration in seconds
   private static final int TIMEOUT_SECONDS = 5;
+
+  // === Nuovi campi per maintenance gating ===
+  // Unione delle chiavi ricevute durante RECOVERY (due batch)
+  private final Set<Integer> recoveryKeysBuffer = new HashSet<>();
+  // Set di chiavi in maintenance pending (JOIN o RECOVERY)
+  private final Set<Integer> maintenancePendingKeys = new HashSet<>();
+  // Timer per timeout maintenance
+  private Cancellable maintenanceTimer = null;
 
   /** Constructs a node with its id and quorum parameters (N,R,W). */
   public Node(int nodeId, int N, int R, int W, boolean joining, ActorRef manager) {
@@ -235,10 +244,11 @@ public class Node extends AbstractActor {
   }
 
   // Timeout messages for write and read operations
-  public static class WriteTimeout implements Serializable {
-  }
+  public static class WriteTimeout implements Serializable { }
+  public static class ReadTimeout implements Serializable { }
 
-  public static class ReadTimeout implements Serializable {
+  // Nuovo: timeout per maintenance read (JOIN/RECOVERY)
+  public static class MaintenanceTimeout implements Serializable {
   }
 
   // Failure message to send to client on timeout
@@ -540,6 +550,12 @@ public class Node extends AbstractActor {
 
         // Cleanup
         activeReadCoordinators.remove(msg.key);
+
+        // Se è una maintenance read (client == self) conto il completamento
+        if (readState.client == getSelf()) {
+          maintenancePendingKeys.remove(msg.key);
+          completeMaintenanceIfDone();
+        }
       }
     }
   }
@@ -620,6 +636,74 @@ public class Node extends AbstractActor {
       }
     }
     toRemove.forEach(activeReadCoordinators::remove);
+  }
+
+  // === Helpers per maintenance gating ===
+
+  private void startMaintenanceReads(Set<Integer> keys) {
+    if (keys == null || keys.isEmpty()) {
+      completeMaintenanceIfDone();
+      return;
+    }
+    // Aggiorna pending set
+    for (Integer key : keys) {
+      if (maintenancePendingKeys.add(key)) {
+        ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
+        activeReadCoordinators.put(key, state);
+        for (ActorRef node : getResponsibleNodes(key, nodes)) {
+          node.tell(new GetVersionRequest(key, getSelf()), getSelf());
+        }
+      }
+    }
+    // Avvia/riavvia timeout maintenance
+    if (maintenanceTimer != null && !maintenanceTimer.isCancelled()) {
+      maintenanceTimer.cancel();
+    }
+    maintenanceTimer = context().system().scheduler().scheduleOnce(
+        Duration.create(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+        getSelf(),
+        new MaintenanceTimeout(),
+        context().dispatcher(),
+        ActorRef.noSender());
+  }
+
+  private void completeMaintenanceIfDone() {
+    if (!maintenancePendingKeys.isEmpty()) {
+      return;
+    }
+    if (maintenanceTimer != null && !maintenanceTimer.isCancelled()) {
+      maintenanceTimer.cancel();
+      maintenanceTimer = null;
+    }
+
+    if (mode == Mode.JOINING) {
+      // Annuncia il join agli altri peer ora che è allineato
+      for (ActorRef p : nodes) {
+        if (p != getSelf()) {
+          p.tell(new AnnounceJoin(getSelf(), nodeId), getSelf());
+        }
+      }
+      manager.tell(new MarsSystemManager.NodeJoined(nodeId, getSelf()), getSelf());
+      this.serving = true;
+      this.mode = Mode.IDLE;
+      getContext().become(activeReceive());
+      logger.log("JOIN completed (maintenance done) and serving.");
+    } else if (mode == Mode.RECOVERING) {
+      manager.tell(new MarsSystemManager.NodeRecovered(nodeId, getSelf()), getSelf());
+      this.serving = true;
+      this.mode = Mode.IDLE;
+      getContext().become(activeReceive());
+      logger.log("RECOVERY completed (maintenance done) and serving.");
+    }
+  }
+
+  private void onMaintenanceTimeout(MaintenanceTimeout msg) {
+    if (maintenancePendingKeys.isEmpty()) {
+      return; // già completato
+    }
+    logger.logError("MaintenanceTimeout: proceeding despite pending keys=" + maintenancePendingKeys.size());
+    maintenancePendingKeys.clear();
+    completeMaintenanceIfDone();
   }
 
   // =====================
@@ -780,7 +864,7 @@ public class Node extends AbstractActor {
    */
   private void onDataItemsBatch(DataItemsBatch msg) {
     if (mode == Mode.JOINING) {
-      // 1) Salva item
+      // 1) Salva item (nuovo nodo, store fresco)
       store.clear();
       for (Map.Entry<Integer, DataItem> e : msg.items.entrySet()) {
         DataItem cur = store.get(e.getKey());
@@ -789,40 +873,25 @@ public class Node extends AbstractActor {
         }
       }
 
-      // 2) Maintenance read per ogni key per allineare versione quorum
-      for (Integer key : msg.items.keySet()) {
-        ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
-        activeReadCoordinators.put(key, state);
-        for (ActorRef node : getResponsibleNodes(key, nodes)) {
-          node.tell(new GetVersionRequest(key, getSelf()), getSelf());
-        }
+      // 2) Aggiorna vista locale per calcolare correttamente le repliche (include self)
+      if (!nodeIdMap.containsKey(getSelf())) {
+        nodes.add(getSelf());
+        nodeIdMap.put(getSelf(), nodeId);
       }
 
-      // 3) Aggiorna vista
-      nodes.add(getSelf());
-      nodeIdMap.put(getSelf(), nodeId);
-
-      // 4) Annuncia il join agli altri
-      for (ActorRef p : nodes) {
-        if (p != getSelf()) {
-          p.tell(new AnnounceJoin(getSelf(), nodeId), getSelf());
-        }
-      }
-      manager.tell(new MarsSystemManager.NodeJoined(nodeId, getSelf()), getSelf());
-
-      this.serving = true;
-      this.mode = Mode.IDLE;
-      getContext().become(activeReceive());
-      logger.log("JOIN completed and serving.");
+      // 3) Avvia maintenance read su TUTTE le chiavi ricevute
+      startMaintenanceReads(new HashSet<>(msg.items.keySet()));
+      // NON annunciare ancora e NON diventare serving: si completa in completeMaintenanceIfDone()
 
     } else if (mode == Mode.RECOVERING) {
-      // 1) Salva item recuperati
+      // 1) Salva item recuperati e accumula chiavi
       for (Map.Entry<Integer, DataItem> e : msg.items.entrySet()) {
         DataItem cur = store.get(e.getKey());
         if (cur == null || e.getValue().version >= cur.version) {
           store.put(e.getKey(), e.getValue());
         }
       }
+      recoveryKeysBuffer.addAll(msg.items.keySet());
       receivedResponseForRecovery++;
 
       // Controlla se abbiamo ricevuto entrambe le risposte
@@ -830,21 +899,10 @@ public class Node extends AbstractActor {
         // 2) Pruning rispetto alla vista corrente
         pruneKeysNotResponsible();
 
-        // 3) Maintenance read su item recuperati
-        for (Integer key : msg.items.keySet()) {
-          ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
-          activeReadCoordinators.put(key, state);
-          for (ActorRef node : getResponsibleNodes(key, nodes)) {
-            node.tell(new GetVersionRequest(key, getSelf()), getSelf());
-          }
-        }
-
-        // 4) Aggiorna stato del nodo
-        this.serving = true;
-        this.mode = Mode.IDLE;
-        manager.tell(new MarsSystemManager.NodeRecovered(nodeId, getSelf()), getSelf());
-        getContext().become(activeReceive());
-        logger.log("RECOVERY completed and serving.");
+        // 3) Maintenance read su UNIONE chiavi (due batch)
+        startMaintenanceReads(new HashSet<>(recoveryKeysBuffer));
+        recoveryKeysBuffer.clear();
+        // Completamento recovery al termine delle maintenance read (completeMaintenanceIfDone)
       } else {
         logger.log("RECOVER: waiting for more responses (" + receivedResponseForRecovery + "/2)");
       }
@@ -972,7 +1030,8 @@ public class Node extends AbstractActor {
         .match(GetVersionResponse.class, this::onGetVersionResponse)
 
         .match(ReadTimeout.class, this::onReadTimeout)
-        
+        .match(MaintenanceTimeout.class, this::onMaintenanceTimeout)
+
         .match(GetRequest.class, this::onGetRequest)
         .match(UpdateRequest.class, this::onUpdateRequest)
         .build();
