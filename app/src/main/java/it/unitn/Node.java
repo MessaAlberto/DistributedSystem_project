@@ -561,11 +561,11 @@ public class Node extends AbstractActor {
       logger.log("Rejected UpdateRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
-    writeLocks.put(msg.key, getSelf());
 
     // Start version gathering phase
     List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes);
     for (ActorRef node : responsibleNodes) {
+      logger.log("Notifying node " + nodeIdMap.get(node) + " for UpdateRequest");
       node.tell(new UpdateVersion(msg.key, getSelf()), getSelf());
     }
 

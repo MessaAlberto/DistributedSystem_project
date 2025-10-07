@@ -233,6 +233,7 @@ public class Client extends AbstractActor {
   }
 
   private void sendResponse(String id, boolean success, String message) {
+    logger.log("Sending response to manager: " + id + " success=" + success + " message=" + message);
     manager.tell(new ClientResponse(id, success, message), getSelf());
   }
 
