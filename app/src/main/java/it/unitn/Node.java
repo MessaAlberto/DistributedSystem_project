@@ -41,7 +41,7 @@ public class Node extends AbstractActor {
 
   // Timeout duration in seconds
   private final int timeoutSeconds;
-  private Cancellable joinTimeout;  //TODO
+  private Cancellable joinTimeout; // TODO
   private Cancellable recoverTimeout;
 
   // Keys that need to be recovered during JOIN/RECOVERY
@@ -49,7 +49,9 @@ public class Node extends AbstractActor {
   private int receivedResponseForRecovery = 0;
 
   // Active coordinator states for ongoing write and read operations
+  // key -> state
   private final Map<Integer, WriteCoordinatorState> activeWriteCoordinators = new HashMap<>();
+  // "key + clientName" -> state
   private final Map<String, ReadCoordinatorState> activeReadCoordinators = new HashMap<>();
 
   /** Constructs a node with its id and quorum parameters (N,R,W). */
@@ -181,7 +183,7 @@ public class Node extends AbstractActor {
   /**
    * Returns the N responsible replica nodes for a key (ring order, wrap-around).
    */
-  private List<ActorRef> getResponsibleNodes(int key, List<ActorRef> nodes) {
+  private List<ActorRef> getResponsibleNodes(int key, List<ActorRef> nodes, Map<ActorRef, Integer> nodeIdMap) {
     List<ActorRef> sortedPeers = new ArrayList<>(nodes);
     Collections.sort(sortedPeers, Comparator.comparingInt(a -> nodeIdMap.get(a)));
 
@@ -215,7 +217,7 @@ public class Node extends AbstractActor {
     List<Integer> toRemove = new ArrayList<>();
     for (Map.Entry<Integer, DataItem> e : store.entrySet()) {
       int key = e.getKey();
-      List<ActorRef> resp = getResponsibleNodes(key, nodes);
+      List<ActorRef> resp = getResponsibleNodes(key, nodes, nodeIdMap);
       if (!resp.contains(getSelf())) {
         toRemove.add(key);
       }
@@ -238,8 +240,8 @@ public class Node extends AbstractActor {
       ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
       activeReadCoordinators.put(key + " " + getSelf().path().name(), state);
 
-      for (ActorRef node : getResponsibleNodes(key, nodes)) {
-        node.tell(new GetVersion(key, getSelf()), getSelf());
+      for (ActorRef node : getResponsibleNodes(key, nodes, nodeIdMap)) {
+        node.tell(new GetVersion(key, getSelf(), null), getSelf());
       }
     }
   }
@@ -315,10 +317,12 @@ public class Node extends AbstractActor {
 
   public static class GetVersion implements Serializable {
     public final int key;
+    public final ActorRef coordinator;
     public final ActorRef requester;
 
-    public GetVersion(int key, ActorRef requester) {
+    public GetVersion(int key, ActorRef coordinator, ActorRef requester) {
       this.key = key;
+      this.coordinator = coordinator;
       this.requester = requester;
     }
   }
@@ -428,6 +432,9 @@ public class Node extends AbstractActor {
     }
   }
 
+  public static class PrintStore implements Serializable {
+  }
+
   // ===== Membership & transfer messages =====
   public static class NodeAction implements Serializable {
     public final String action; // "leave", "crash", "recover"
@@ -458,9 +465,11 @@ public class Node extends AbstractActor {
 
   public static class ItemRequest implements Serializable {
     public final ActorRef targetNode;
+    public final int targetNodeId;
 
-    public ItemRequest(ActorRef targetNode) {
+    public ItemRequest(ActorRef targetNode, int targetNodeId) {
       this.targetNode = targetNode;
+      this.targetNodeId = targetNodeId;
     }
   }
 
@@ -534,14 +543,16 @@ public class Node extends AbstractActor {
     }
 
     // Start version gathering phase
-    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes);
+    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes, nodeIdMap);
     for (ActorRef node : responsibleNodes) {
-      node.tell(new GetVersion(msg.key, getSelf()), getSelf());
+      logger.log("Notifying node " + nodeIdMap.get(node) + " for GetRequest: key=" + msg.key + " client=" + getSender().path().name());
+      node.tell(new GetVersion(msg.key, getSelf(), getSender()), getSelf());
     }
 
     // Initialize coordinator state + start timeout
     ReadCoordinatorState state = new ReadCoordinatorState(msg.key, getSender());
     activeReadCoordinators.put(msg.key + " " + getSender().path().name(), state);
+    logger.log("Started read coordinator for key= (" + msg.key + " " + getSender().path().name() + ")");
   }
 
   /**
@@ -563,9 +574,9 @@ public class Node extends AbstractActor {
     }
 
     // Start version gathering phase
-    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes);
+    List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes, nodeIdMap);
     for (ActorRef node : responsibleNodes) {
-      logger.log("Notifying node " + nodeIdMap.get(node) + " for UpdateRequest");
+      logger.log("Notifying node " + nodeIdMap.get(node) + " for UpdateRequest: key=" + msg.key + " value=\"" + msg.value + "\"");
       node.tell(new UpdateVersion(msg.key, getSelf()), getSelf());
     }
 
@@ -578,7 +589,8 @@ public class Node extends AbstractActor {
   private void onGetVersion(GetVersion msg) {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
-      msg.requester.tell(new GetVersionResponse(msg.key, -1, "", msg.requester), getSelf());
+      logger.log("Rejected GetVersion for key=" + msg.key + " due to ongoing write");
+      msg.coordinator.tell(new GetVersionResponse(msg.key, -1, "", msg.requester), getSelf());
       return;
     }
 
@@ -589,7 +601,8 @@ public class Node extends AbstractActor {
       version = item.version;
       value = item.value;
     }
-    msg.requester.tell(new GetVersionResponse(msg.key, version, value, msg.requester), getSelf());
+    logger.log("Replied GetVersion for key=" + msg.key + " v=" + version);
+    msg.coordinator.tell(new GetVersionResponse(msg.key, version, value, msg.requester), getSelf());
   }
 
   private void onGetVersionResponse(GetVersionResponse msg) {
@@ -606,6 +619,12 @@ public class Node extends AbstractActor {
     ReadCoordinatorState state = activeReadCoordinators.get(msg.key + " " + msg.requester.path().name());
     if (state == null) {
       // No active read for this key (maybe quorum already reached)
+      // TODO: is this a problem? check storage of all coordinators to understand if it is a already handled read or a lost message
+      logger.log("Looking for read coordinator for (" + msg.key + " " + msg.requester.path().name() + "): not found");
+      // Show my coordinators for debugging
+      for (String k : activeReadCoordinators.keySet()) {
+        logger.log("Active read coordinator: " + k);
+      }
       return;
     }
 
@@ -627,7 +646,7 @@ public class Node extends AbstractActor {
 
       // Update local store if the version is newer
       DataItem current = store.get(msg.key);
-      if (current == null || maxVersionResponse.version > current.version) {
+      if (current != null && maxVersionResponse.version > current.version) {
         store.put(msg.key, new DataItem(maxVersionResponse.version, maxVersionResponse.value));
         logger.log("(Read) Updated local store key=" + msg.key + " v=" + maxVersionResponse.version);
       }
@@ -727,11 +746,11 @@ public class Node extends AbstractActor {
    * Handles actual value update on replicas, checking version and write lock.
    */
   private void onUpdateValue(UpdateValue msg) {
-    if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
-      // TODO: is a problem?
-      logger.log("Ignored UpdateValue for key=" + msg.key + " due to ongoing write");
-      return;
-    }
+    // if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
+    //   // TODO: is a problem?
+    //   logger.log("Ignored UpdateValue for key=" + msg.key + " due to ongoing write");
+    //   return;
+    // }
     writeLocks.remove(msg.key);
 
     DataItem current = store.get(msg.key);
@@ -828,12 +847,14 @@ public class Node extends AbstractActor {
       logger.log("TransferData to successor and leaving network");
 
       List<ActorRef> tempNodes = new ArrayList<>(this.nodes);
+      Map<ActorRef, Integer> tempNodeIdMap = new HashMap<>(this.nodeIdMap);
       tempNodes.remove(getSelf());
+      tempNodeIdMap.remove(getSelf());
 
       for (Map.Entry<Integer, DataItem> e : new ArrayList<>(store.entrySet())) {
         int key = e.getKey();
         DataItem di = e.getValue();
-        List<ActorRef> responsible = getResponsibleNodes(key, tempNodes);
+        List<ActorRef> responsible = getResponsibleNodes(key, tempNodes, tempNodeIdMap);
 
         for (ActorRef target : responsible) {
           target.tell(new TransferData(key, di.version, di.value), getSelf());
@@ -906,7 +927,7 @@ public class Node extends AbstractActor {
 
       if (successor != null) {
         logger.log("JOIN: requesting items from " + nodeIdMap.get(successor));
-        successor.tell(new ItemRequest(getSelf()), getSelf());
+        successor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
       } else {
         logger.logError(
             "JOIN: due specifics of the project, the network has always an active node. Here, no successor has been found => ERROR.");
@@ -923,10 +944,10 @@ public class Node extends AbstractActor {
 
       // send recovery requests
       logger.log("RECOVER: requesting items from successor " + nodeIdMap.get(successor));
-      successor.tell(new ItemRequest(getSelf()), getSelf());
+      successor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
 
       logger.log("RECOVER: requesting items from predecessor " + nodeIdMap.get(predecessor));
-      predecessor.tell(new ItemRequest(getSelf()), getSelf());
+      predecessor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
     }
 
     else {
@@ -938,11 +959,13 @@ public class Node extends AbstractActor {
   private void onItemRequest(ItemRequest msg) {
     Map<Integer, DataItem> batch = new LinkedHashMap<>();
     List<ActorRef> tempNodes = new ArrayList<>(this.nodes);
+    Map<ActorRef, Integer> tempNodeIdMap = new HashMap<>(this.nodeIdMap);
     tempNodes.add(msg.targetNode);
+    tempNodeIdMap.put(msg.targetNode, msg.targetNodeId);
 
     for (Map.Entry<Integer, DataItem> e : store.entrySet()) {
       int key = e.getKey();
-      List<ActorRef> resp = getResponsibleNodes(key, tempNodes);
+      List<ActorRef> resp = getResponsibleNodes(key, tempNodes, tempNodeIdMap);
       if (resp.contains(msg.targetNode)) {
         batch.put(key, e.getValue());
       }
@@ -1043,13 +1066,18 @@ public class Node extends AbstractActor {
   }
 
   private void onOperationFailed(OperationFailed msg) {
-    if (msg.equals("Write quorum not reached")) {
-      logger.logError("OperationFailed: write quorum not reached for key=" + msg.key);
-      // Remove lock of that coordinator, if any
-      writeLocks.remove(msg.key);
+    if ("Write quorum not reached".equals(msg.reason)) {
+      if (writeLocks.remove(msg.key) != null) {
+        logger.log("OperationFailed: write quorum not reached for key=" + msg.key);
+      }
+      logger.log("OperationFailed: no lock found for key=" + msg.key + " (other coordinating node reached quorum)");
     } else {
       logger.logError("OperationFailed: " + msg.reason + " for key=" + msg.key);
     }
+  }
+
+  private void onPrintStore(PrintStore msg) {
+    getSender().tell(new TestManager.PrintStoreResponse(nodeId, new LinkedHashMap<>(store)), getSelf());
   }
 
   // =====================
@@ -1084,6 +1112,7 @@ public class Node extends AbstractActor {
         .match(AnnounceLeave.class, this::onAnnounceLeave)
         .match(TransferData.class, this::onTransferData)
         .match(OperationFailed.class, this::onOperationFailed)
+        .match(PrintStore.class, this::onPrintStore)
         .build();
   }
 

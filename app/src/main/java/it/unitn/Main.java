@@ -53,20 +53,19 @@ public class Main {
 
     CountDownLatch latch = null; // Used to wait for async operations in tests
 
+    // testSigleUpdateGetScenario(testManager, latch);
 
-    testSigleUpdateGetScenario(testManager, latch);
-    
-    inputContinue();
+    // inputContinue();
 
-    testMultipleClientsScenario(testManager, latch);
+    // testMultipleClientsScenario(testManager, latch);
 
     inputContinue();
 
     testJoinLeaveScenario(testManager, latch);
 
-    inputContinue();
+    // inputContinue();
 
-    testCrashRecoveryScenario(testManager, latch);
+    // testCrashRecoveryScenario(testManager, latch);
 
   }
 
@@ -86,8 +85,8 @@ public class Main {
     logger.log("============================================================");
     logger.log("====        Starting single-client basic test           ====");
     logger.log("============================================================");
-    logger.log("Storing key=1, value='HelloWorld'...");
 
+    logger.log("Storing key=1, value='HelloWorld'...");
     latch = new CountDownLatch(1);
     testManager.tell(new TestManager.ClientRequest(0, 1, "HelloWorld", latch), ActorRef.noSender());
     latch.await();
@@ -113,6 +112,9 @@ public class Main {
     testManager.tell(new TestManager.ClientRequest(0, 1, null, latch), ActorRef.noSender());
     latch.await();
 
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
     testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
     Thread.sleep(500);
     logger.log("");
@@ -125,9 +127,8 @@ public class Main {
   }
 
   /**
-   * Test 1: Multiple clients serving concurrent requests (possibly same key)
-   * - Creates multiple clients
-   * - Sends concurrent Put/Get operations
+   * Test 2: Multiple clients serving concurrent requests
+   * - Sends concurrent Update/Get operations
    * - Tests same key access from different clients
    */
   private static void testMultipleClientsScenario(ActorRef testManager, CountDownLatch latch)
@@ -138,54 +139,40 @@ public class Main {
     logger.log("============================================================");
     logger.log("Testing concurrent requests on same key (42)...");
 
-    // Concurrent operations on same key sequentially
-    latch = new CountDownLatch(1);
+    // Concurrent operations on same key
+    latch = new CountDownLatch(3);
     testManager.tell(new TestManager.ClientRequest(0, 42, "Value1_Client1", latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    latch = new CountDownLatch(1);
     testManager.tell(new TestManager.ClientRequest(1, 42, "Value2_Client2", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(2, 42, "Value3_Client3", latch), ActorRef.noSender());
     latch.await();
 
     inputContinue();
 
     latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(2, 42, "Value3_Client3",
-        latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(1, 42, null, latch), ActorRef.noSender());
     latch.await();
 
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 42, "Value3_Client3",
-        latch), ActorRef.noSender());
-    latch.await();
-
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(1, 42, null, latch),
-        ActorRef.noSender());
-    latch.await();
+    inputContinue();
 
     logger.log("Testing concurrent requests on different keys...");
 
     // Concurrent operations on different keys
     latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 10, "DataA", latch),
-        ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 20, "DataB", latch),
-        ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 30, "DataC", latch),
-        ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(0, 10, "DataA", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(1, 20, "DataB", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(2, 80, "DataC", latch), ActorRef.noSender());
     latch.await();
 
+    inputContinue();
+
     latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 10, null, latch),
-        ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 20, null, latch),
-        ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 30, null, latch),
-        ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(0, 10, null, latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(1, 20, null, latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(2, 80, null, latch), ActorRef.noSender());
     latch.await();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
 
     testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
     Thread.sleep(500);
@@ -199,7 +186,7 @@ public class Main {
   }
 
   /**
-   * Test 2: Node join and leave operations
+   * Test 3: Node join and leave operations
    * - Tests joining new nodes
    * - Tests graceful leaving
    * - Ensures operations work after membership changes
@@ -214,30 +201,60 @@ public class Main {
     testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
     Thread.sleep(500);
 
+    logger.log("Testing operations before JOIN...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(0, 57, "BeforeJoin", latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    inputContinue();
+
     logger.log("Adding new node (JOIN)...");
     latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.NodeActionRequest("join", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.NodeActionRequest("join", 55, latch), ActorRef.noSender());
     latch.await();
 
-    logger.log("Testing operations after JOIN...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 50, "AfterJoin", latch), ActorRef.noSender());
-    latch.await();
+    inputContinue();
 
-    logger.log("Removing a node (LEAVE)...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.NodeActionRequest("leave", latch), ActorRef.noSender());
-    latch.await();
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
 
-    logger.log("Testing operations after LEAVE...");
+    inputContinue();
 
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 50, null, latch), ActorRef.noSender());
-    latch.await();
+    // logger.log("Testing operations after JOIN...");
+    // latch = new CountDownLatch(1);
+    // testManager.tell(new TestManager.ClientRequest(0, 50, "AfterJoin", latch), ActorRef.noSender());
+    // latch.await();
 
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 60, "AfterLeave", latch), ActorRef.noSender());
-    latch.await();
+    // inputContinue();
+
+    // logger.log("Removing a node (LEAVE)...");
+    // latch = new CountDownLatch(1);
+    // testManager.tell(new TestManager.NodeActionRequest("leave", latch), ActorRef.noSender());
+    // latch.await();
+
+    // inputContinue();
+
+    // logger.log("Testing operations after LEAVE...");
+
+    // latch = new CountDownLatch(1);
+    // testManager.tell(new TestManager.ClientRequest(0, 50, null, latch), ActorRef.noSender());
+    // latch.await();
+
+    // inputContinue();
+
+    // latch = new CountDownLatch(1);
+    // testManager.tell(new TestManager.ClientRequest(0, 60, "AfterLeave", latch), ActorRef.noSender());
+    // latch.await();
+
+    // inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
 
     testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
     Thread.sleep(500);
@@ -310,6 +327,9 @@ public class Main {
     latch = new CountDownLatch(1);
     testManager.tell(new TestManager.ClientRequest(0, 1003, "AfterRecovery", latch), ActorRef.noSender());
     latch.await();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
 
     testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
     Thread.sleep(500);

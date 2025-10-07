@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -13,6 +14,7 @@ import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Props;
+import it.unitn.Node.DataItem;
 import it.unitn.Node.JoinGroupMsg;
 
 /**
@@ -43,6 +45,9 @@ public class TestManager extends AbstractActor {
   private boolean isCommunicationTerminated() {
     return activeClientRequests.isEmpty();
   }
+
+  private int printStore_counter = 0;
+  private Map<Integer, Map<Integer, DataItem>> allNodeStores = new HashMap<>();
 
   /** Constructs the manager with replication parameters. */
   public TestManager(ActorSystem system, int N, int R, int W, int timeoutSeconds, int initialNodes) {
@@ -150,6 +155,19 @@ public class TestManager extends AbstractActor {
     }
   }
 
+  public static class PrintStoreRequest implements Serializable {
+  }
+
+  public static class PrintStoreResponse implements Serializable {
+    public final int nodeId;
+    public final Map<Integer, DataItem> storeContent;
+
+    public PrintStoreResponse(int nodeId, Map<Integer, DataItem> storeContent) {
+      this.nodeId = nodeId;
+      this.storeContent = new LinkedHashMap<>(storeContent);
+    }
+  }
+
   public static class LogSystemStatus implements Serializable {
   }
 
@@ -234,6 +252,8 @@ public class TestManager extends AbstractActor {
         logger.logError("Unknown action in NodeActionResponse: " + msg.action);
         return;
       }
+
+      updateNodeStateAndClients(msg.action, getSender(), msg.nodeId);
     } else {
       logger.logError("Node action failed: " + msg.action + " for Node " + msg.nodeId);
     }
@@ -243,6 +263,7 @@ public class TestManager extends AbstractActor {
       currentBatchLatch.countDown();
       // Reset latch only if no pending client requests
       if (activeClientRequests.isEmpty()) {
+        logger.log("Node action batch completed.");
         currentBatchLatch = null;
       }
     }
@@ -263,11 +284,53 @@ public class TestManager extends AbstractActor {
 
     // Check if the batch is finished
     if (currentBatchLatch != null) {
-      currentBatchLatch.countDown();
       if (activeClientRequests.isEmpty()) {
         // batch finished: reset for next batch
+        logger.log("Client request batch completed.");
+        currentBatchLatch.countDown();
         currentBatchLatch = null;
+      } else {
+        logger.log("Pending client requests remain, batch not yet complete.");
+        currentBatchLatch.countDown();
       }
+    }
+  }
+
+  private void onPrintStoreRequest(PrintStoreRequest msg) {
+    printStore_counter = 0;
+    allNodeStores.clear();
+
+    logger.log("=== PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===");
+    for (ActorRef node : activeNodes) {
+      node.tell(new Node.PrintStore(), self());
+    }
+  }
+
+  private void onPrintStoreResponse(PrintStoreResponse msg) {
+    printStore_counter++;
+    allNodeStores.put(msg.nodeId, msg.storeContent);
+
+    if (printStore_counter == activeNodes.size()) {
+      logger.log("=== COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===");
+      allNodeStores = allNodeStores.entrySet().stream()
+          .sorted(Map.Entry.comparingByKey())
+          .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), LinkedHashMap::putAll);
+
+      for (Map.Entry<Integer, Map<Integer, DataItem>> entry : allNodeStores.entrySet()) {
+        int nodeId = entry.getKey();
+        Map<Integer, DataItem> store = entry.getValue();
+        if (store.isEmpty()) {
+          logger.log("Node " + nodeId + ": (empty)");
+        } else {
+          logger.log("Node " + nodeId + ":");
+          for (Map.Entry<Integer, DataItem> item : store.entrySet()) {
+            logger.log("  Key: " + item.getKey() + " -> Value: \"" + item.getValue().value + "\" (v"
+                + item.getValue().version + ")");
+          }
+        }
+      }
+      printStore_counter = 0;
+      allNodeStores.clear();
     }
   }
 
@@ -417,8 +480,6 @@ public class TestManager extends AbstractActor {
         targetNode = system.actorOf(Node.props(targetId, N, R, W, true, self(), bootstrap, timeoutSeconds),
             "Node" + targetId);
 
-        // Update local state
-        updateNodeStateAndClients(act, targetNode, targetId);
         logger.log("JOIN completed: Node " + targetId + " joined the system");
         break;
 
@@ -446,7 +507,6 @@ public class TestManager extends AbstractActor {
         } else {
           targetNode.tell(new Node.NodeAction(act), ActorRef.noSender());
         }
-        updateNodeStateAndClients(act, targetNode, targetId);
         logger.log(act.toUpperCase() + " completed: Node " + targetId);
         break;
 
@@ -664,6 +724,8 @@ public class TestManager extends AbstractActor {
         .match(NodeActionRequest.class, this::onNodeActionRequest)
         .match(NodeActionResponse.class, this::onNodeActionResponse)
         .match(Client.ClientResponse.class, this::onClientResponse)
+        .match(PrintStoreRequest.class, this::onPrintStoreRequest)
+        .match(PrintStoreResponse.class, this::onPrintStoreResponse)
         .match(LogSystemStatus.class, msg -> logSystemStatus())
         .build();
   }

@@ -44,12 +44,6 @@ public class Client extends AbstractActor {
     return Props.create(Client.class, () -> new Client(nodes, name, manager, timeoutSeconds));
   }
 
-  private static String shortName(ActorRef nodeRef) {
-    if (nodeRef == null)
-      return "null";
-    return nodeRef.path().name();
-  }
-
   // === Messages ===
 
   public static class Update implements Serializable {
@@ -151,17 +145,10 @@ public class Client extends AbstractActor {
     }
 
     ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
-    logger.log("Sending UpdateRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + shortName(target));
+    logger.log("Sending UpdateRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + target.path().name());
     target.tell(new Node.UpdateRequest(msg.key, msg.value), getSelf());
 
     startRequest(requestId, msg);
-  }
-
-  private void onUpdateResponse(UpdateResponse msg) {
-    logger.log("Received UpdateResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
-    cancelRequest("UPDATE " + msg.key + " " + msg.value);
-    sendResponse("UPDATE " + msg.key + " " + msg.value, true,
-        "Update successful for key=" + msg.key + " version=" + msg.version);
   }
 
   private void onGet(Get msg) {
@@ -176,11 +163,19 @@ public class Client extends AbstractActor {
     }
 
     ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
-    logger.log("Sending GetRequest key=" + msg.key + " to " + shortName(target));
+    logger.log("Sending GetRequest key=" + msg.key + " to " + target.path().name());
     target.tell(new Node.GetRequest(msg.key), getSelf());
 
     startRequest(requestId, msg);
   }
+
+  private void onUpdateResponse(UpdateResponse msg) {
+    logger.log("Received UpdateResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
+    cancelRequest("UPDATE " + msg.key + " " + msg.value);
+    sendResponse("UPDATE " + msg.key + " " + msg.value, true,
+        "Update successful for key=" + msg.key + " version=" + msg.version);
+  }
+
 
   private void onGetResponse(GetResponse msg) {
     logger.log("Received GetResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
@@ -197,9 +192,20 @@ public class Client extends AbstractActor {
   }
 
   private void onOperationFailed(Node.OperationFailed msg) {
-    cancelRequest("UPDATE " + msg.key + " " + msg.value);
-    logger.logError("Operation failed for key=" + msg.key + ": " + msg.reason);
-    sendResponse("UPDATE " + msg.key + " " + msg.value, false, "Operation failed: " + msg.reason);
+    String requestId = "UPDATE " + msg.key + " " + msg.value;
+
+    // Try to cancel the request if still pending
+    PendingRequest pr = pendingRequests.remove(requestId);
+    if (pr != null) {
+      if (!pr.timeout.isCancelled()) {
+        pr.timeout.cancel();
+      }
+      logger.logError("Operation failed for key=" + msg.key + ": " + msg.reason);
+      sendResponse(requestId, false, "Operation failed: " + msg.reason);
+    } else {
+      // The request was already completed (likely timed out)
+      logger.log("Ignored late OperationFailed for key=" + msg.key + " (request already handled)");
+    }
   }
 
   private void onTimeout(OperationTimeout msg) {
