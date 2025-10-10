@@ -37,7 +37,7 @@ public class TestManager extends AbstractActor {
   private final List<ActorRef> crashedNodes;
   private final Map<ActorRef, Integer> nodeIdMap;
 
-  // clientName -> list of requests: "GET key" or "UPDATE key value"
+  // clientName -> list of requests: "READ key" or "WRITE key value"
   private final Map<String, List<String>> activeClientRequests;
 
   private boolean isViewChangedStable;
@@ -46,6 +46,7 @@ public class TestManager extends AbstractActor {
     return activeClientRequests.isEmpty();
   }
 
+  // Printing store state
   private int printStore_counter = 0;
   private Map<Integer, Map<Integer, DataItem>> allNodeStores = new HashMap<>();
 
@@ -110,7 +111,7 @@ public class TestManager extends AbstractActor {
   public static class ClientRequest implements Serializable {
     public final int clientIndex; // index in clients list
     public final int key;
-    public final String value; // null for GET, non-null for UPDATE
+    public final String value; // null for READ, non-null for WRITE
     public CountDownLatch latch = null; // optional latch to signal batch completion
 
     public ClientRequest(int clientIndex, int key, String value) {
@@ -190,12 +191,12 @@ public class TestManager extends AbstractActor {
 
     String clientName = "client" + msg.clientIndex;
     activeClientRequests.computeIfAbsent(clientName, k -> new ArrayList<>())
-        .add((msg.value == null ? "GET " : "UPDATE ") + msg.key + (msg.value != null ? " " + msg.value : ""));
+        .add((msg.value == null ? "READ " : "WRITE ") + msg.key + (msg.value != null ? " " + msg.value : ""));
 
     if (msg.value == null) {
-      clients.get(msg.clientIndex).tell(new Client.Get(msg.key), self());
+      clients.get(msg.clientIndex).tell(new Client.Read(msg.key), self());
     } else {
-      clients.get(msg.clientIndex).tell(new Client.Update(msg.key, msg.value), self());
+      clients.get(msg.clientIndex).tell(new Client.Write(msg.key, msg.value), self());
     }
   }
 
@@ -463,6 +464,7 @@ public class TestManager extends AbstractActor {
     int targetId;
     String act = action.toLowerCase();
     ActorRef bootstrap = null;
+    List<ActorRef> allNodes = new ArrayList<>();
 
     switch (act) {
       case "join":
@@ -471,12 +473,17 @@ public class TestManager extends AbstractActor {
           logger.logError("Node ID " + targetId + " already exists.");
           return;
         }
-        if (activeNodes.isEmpty()) {
-          logger.logError("Cannot join: no active nodes for bootstrap");
+
+        allNodes.addAll(activeNodes);
+        allNodes.addAll(crashedNodes);
+
+        if (allNodes.isEmpty()) {
+          logger.logError("Cannot join: no nodes available for bootstrap");
           return;
         }
+
         isViewChangedStable = false;
-        bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
+        bootstrap = allNodes.get(random.nextInt(allNodes.size()));
         targetNode = system.actorOf(Node.props(targetId, N, R, W, true, self(), bootstrap, timeoutSeconds),
             "Node" + targetId);
 
@@ -502,7 +509,15 @@ public class TestManager extends AbstractActor {
         isViewChangedStable = false;
         targetId = nodeIdMap.get(targetNode);
         if (act.equals("recover")) {
-          bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
+          allNodes.addAll(activeNodes);
+          allNodes.addAll(crashedNodes);
+
+          if (allNodes.isEmpty()) {
+            logger.logError("Cannot recover: no nodes available for bootstrap");
+            return;
+          }
+
+          bootstrap = allNodes.get(random.nextInt(allNodes.size()));
           targetNode.tell(new Node.NodeAction(act, bootstrap), ActorRef.noSender());
         } else {
           targetNode.tell(new Node.NodeAction(act), ActorRef.noSender());
@@ -557,7 +572,7 @@ public class TestManager extends AbstractActor {
   // int key = Integer.parseInt(parts[1]);
   // String value = String.join(" ", java.util.Arrays.copyOfRange(parts, 2,
   // parts.length));
-  // clients.get(0).tell(new Client.Update(key, value), ActorRef.noSender());
+  // clients.get(0).tell(new Client.Write(key, value), ActorRef.noSender());
   // logger.log("Put request sent: key=" + key + ", value=\"" + value + "\"");
   // } else {
   // logger.log("Usage: put <key> <value>");
@@ -567,8 +582,8 @@ public class TestManager extends AbstractActor {
   // case "get":
   // if (parts.length >= 2) {
   // int key = Integer.parseInt(parts[1]);
-  // clients.get(0).tell(new Client.Get(key), ActorRef.noSender());
-  // logger.log("Get request sent: key=" + key);
+  // clients.get(0).tell(new Client.Read(key), ActorRef.noSender());
+  // logger.log("Read request sent: key=" + key);
   // } else {
   // logger.log("Usage: get <key>");
   // }
@@ -649,7 +664,7 @@ public class TestManager extends AbstractActor {
   // // Phase 1: Rapid data operations
   // logger.log("Phase 1: Rapid data operations...");
   // for (int i = 2000; i < 2010; i++) {
-  // clients.get(0).tell(new Client.Update(i, "StressData" + i),
+  // clients.get(0).tell(new Client.Write(i, "StressData" + i),
   // ActorRef.noSender());
   // // Thread.sleep(50); // Network propagation delay simulation
   // }
@@ -660,9 +675,9 @@ public class TestManager extends AbstractActor {
   // logger.log("Phase 2: Mixed reads and writes...");
   // for (int i = 2000; i < 2010; i++) {
   // if (i % 2 == 0) {
-  // clients.get(0).tell(new Client.Get(i), ActorRef.noSender());
+  // clients.get(0).tell(new Client.Read(i), ActorRef.noSender());
   // } else {
-  // clients.get(0).tell(new Client.Update(i, "Updated" + i),
+  // clients.get(0).tell(new Client.Write(i, "Writed" + i),
   // ActorRef.noSender());
   // }
   // // Thread.sleep(100); // Network propagation delay
@@ -674,7 +689,7 @@ public class TestManager extends AbstractActor {
   // logger.log("Phase 3: Operations during membership changes...");
 
   // // Start some operations
-  // clients.get(0).tell(new Client.Update(3000, "BeforeJoin"),
+  // clients.get(0).tell(new Client.Write(3000, "BeforeJoin"),
   // ActorRef.noSender());
   // // Thread.sleep(200);
 
@@ -684,15 +699,15 @@ public class TestManager extends AbstractActor {
   // "join", null, N, R, W);
 
   // // Continue operations
-  // clients.get(0).tell(new Client.Update(3001, "DuringJoin"),
+  // clients.get(0).tell(new Client.Write(3001, "DuringJoin"),
   // ActorRef.noSender());
   // // Thread.sleep(200);
-  // clients.get(0).tell(new Client.Get(3000), ActorRef.noSender());
+  // clients.get(0).tell(new Client.Read(3000), ActorRef.noSender());
 
   // // Thread.sleep(3000); // Wait for join to complete
 
   // // More operations after join
-  // clients.get(0).tell(new Client.Update(3002, "AfterJoinCompleted"),
+  // clients.get(0).tell(new Client.Write(3002, "AfterJoinCompleted"),
   // ActorRef.noSender());
   // // Thread.sleep(500);
 
@@ -702,9 +717,9 @@ public class TestManager extends AbstractActor {
   // "crash", null, N, R, W);
 
   // // Continue operations with crashed node
-  // clients.get(0).tell(new Client.Get(3001), ActorRef.noSender());
+  // clients.get(0).tell(new Client.Read(3001), ActorRef.noSender());
   // // Thread.sleep(200);
-  // clients.get(0).tell(new Client.Update(3003, "WithCrashedNode"),
+  // clients.get(0).tell(new Client.Write(3003, "WithCrashedNode"),
   // ActorRef.noSender());
 
   // // Thread.sleep(2000);

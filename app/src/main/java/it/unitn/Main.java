@@ -53,15 +53,15 @@ public class Main {
 
     CountDownLatch latch = null; // Used to wait for async operations in tests
 
-    // testSigleUpdateGetScenario(testManager, latch);
+    // testSigleWriteReadScenario(testManager, latch);
 
     // inputContinue();
 
-    // testMultipleClientsScenario(testManager, latch);
+    testMultipleClientsScenario(testManager, latch);
 
     inputContinue();
 
-    testJoinLeaveScenario(testManager, latch);
+    // testJoinLeaveScenario(testManager, latch);
 
     // inputContinue();
 
@@ -74,12 +74,12 @@ public class Main {
   // =================
 
   /**
-   * Test 1: Single client basic Update/Get operations
-   * - Simple Update operation
-   * - Simple Get operation
+   * Test 1: Single client basic Write/Read operations
+   * - Simple Write operation
+   * - Simple Read operation
    * - Verifies data consistency
    */
-  private static void testSigleUpdateGetScenario(ActorRef testManager, CountDownLatch latch)
+  private static void testSigleWriteReadScenario(ActorRef testManager, CountDownLatch latch)
       throws InterruptedException {
     logger.log("");
     logger.log("============================================================");
@@ -121,14 +121,14 @@ public class Main {
     logger.log("============================================================");
     logger.log("====         Single-client basic test completed.        ====");
     logger.log("Summary:");
-    logger.log("  - Basic Update and Get operations verified.");
+    logger.log("  - Basic Write and Read operations verified.");
     logger.log("  - Data consistency maintained across operations.");
     logger.log("============================================================\n");
   }
 
   /**
    * Test 2: Multiple clients serving concurrent requests
-   * - Sends concurrent Update/Get operations
+   * - Sends concurrent Write/Read operations
    * - Tests same key access from different clients
    */
   private static void testMultipleClientsScenario(ActorRef testManager, CountDownLatch latch)
@@ -148,8 +148,10 @@ public class Main {
 
     inputContinue();
 
-    latch = new CountDownLatch(1);
+    latch = new CountDownLatch(3);
+    testManager.tell(new TestManager.ClientRequest(0, 42, null, latch), ActorRef.noSender());
     testManager.tell(new TestManager.ClientRequest(1, 42, null, latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(2, 42, null, latch), ActorRef.noSender());
     latch.await();
 
     inputContinue();

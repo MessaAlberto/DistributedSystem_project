@@ -28,7 +28,7 @@ public class Node extends AbstractActor {
   private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Mappa ActorRef -> nodeId dei peer conosciuti
   private boolean joining;
   private final ActorRef testManager;
-  private ActorRef bootstrap; // Bootstrap node for joining/recovery
+  private ActorRef bootstrap; // Bootstrap node for joining
   private Mode mode; // Current mode of the node
   private boolean serving;
 
@@ -95,7 +95,7 @@ public class Node extends AbstractActor {
       getContext().become(joiningRecoveringReceive());
 
       // Ask to bootstrap for current peers
-      bootstrap.tell(new GetPeersRequest(), getSelf());
+      bootstrap.tell(new GetPeers(), getSelf());
 
       // Schedule a timeout in case bootstrap doesn't respond
       joinTimeout = getContext().system().scheduler().scheduleOnce(
@@ -137,7 +137,7 @@ public class Node extends AbstractActor {
       this.timeout = context().system().scheduler().scheduleOnce(
           Duration.create(timeoutSeconds, TimeUnit.SECONDS),
           getSelf(),
-          new UpdateTimeout(key),
+          new WriteTimeout(key),
           context().dispatcher(),
           ActorRef.noSender());
     }
@@ -241,7 +241,7 @@ public class Node extends AbstractActor {
       activeReadCoordinators.put(key + " " + getSelf().path().name(), state);
 
       for (ActorRef node : getResponsibleNodes(key, nodes, nodeIdMap)) {
-        node.tell(new GetVersion(key, getSelf(), null), getSelf());
+        node.tell(new GetVersionRead(key, getSelf(), null), getSelf());
       }
     }
   }
@@ -297,43 +297,43 @@ public class Node extends AbstractActor {
     }
   }
 
-  public static class GetRequest implements Serializable {
+  public static class ReadRequest implements Serializable {
     public final int key;
 
-    public GetRequest(int key) {
+    public ReadRequest(int key) {
       this.key = key;
     }
   }
 
-  public static class UpdateRequest implements Serializable {
+  public static class WriteRequest implements Serializable {
     public final int key;
     public final String value;
 
-    public UpdateRequest(int key, String value) {
+    public WriteRequest(int key, String value) {
       this.key = key;
       this.value = value;
     }
   }
 
-  public static class GetVersion implements Serializable {
+  public static class GetVersionRead implements Serializable {
     public final int key;
     public final ActorRef coordinator;
     public final ActorRef requester;
 
-    public GetVersion(int key, ActorRef coordinator, ActorRef requester) {
+    public GetVersionRead(int key, ActorRef coordinator, ActorRef requester) {
       this.key = key;
       this.coordinator = coordinator;
       this.requester = requester;
     }
   }
 
-  public static class GetVersionResponse implements Serializable {
+  public static class VersionReadResponse implements Serializable {
     public final int key;
     public final int version;
     public final String value;
     public final ActorRef requester;
 
-    public GetVersionResponse(int key, int version, String value, ActorRef requester) {
+    public VersionReadResponse(int key, int version, String value, ActorRef requester) {
       this.key = key;
       this.version = version;
       this.value = value;
@@ -341,22 +341,22 @@ public class Node extends AbstractActor {
     }
   }
 
-  public static class UpdateVersion implements Serializable {
+  public static class GetVersionWrite implements Serializable {
     public final int key;
     public final ActorRef requester;
 
-    public UpdateVersion(int key, ActorRef requester) {
+    public GetVersionWrite(int key, ActorRef requester) {
       this.key = key;
       this.requester = requester;
     }
   }
 
-  public static class UpdateVersionResponse implements Serializable {
+  public static class VersionWriteResponse implements Serializable {
     public final int key;
     public final int version;
     public final String value;
 
-    public UpdateVersionResponse(int key, int version, String value) {
+    public VersionWriteResponse(int key, int version, String value) {
       this.key = key;
       this.version = version;
       this.value = value;
@@ -390,10 +390,10 @@ public class Node extends AbstractActor {
   }
 
   // Timeout messages for write and read operations
-  public static class UpdateTimeout implements Serializable {
+  public static class WriteTimeout implements Serializable {
     public final int key;
 
-    public UpdateTimeout(int key) {
+    public WriteTimeout(int key) {
       this.key = key;
     }
   }
@@ -450,14 +450,14 @@ public class Node extends AbstractActor {
     }
   }
 
-  public static class GetPeersRequest implements Serializable {
+  public static class GetPeers implements Serializable {
   }
 
-  public static class PeerSet implements Serializable {
+  public static class PeerResponse implements Serializable {
     public final List<ActorRef> nodes;
     public final Map<ActorRef, Integer> nodeIds;
 
-    public PeerSet(List<ActorRef> nodes, Map<ActorRef, Integer> nodeIds) {
+    public PeerResponse(List<ActorRef> nodes, Map<ActorRef, Integer> nodeIds) {
       this.nodes = nodes;
       this.nodeIds = nodeIds;
     }
@@ -529,24 +529,25 @@ public class Node extends AbstractActor {
    * Handles client Get: acts as coordinator, collects versions, returns the
    * highest with timeout.
    */
-  private void onGetRequest(GetRequest msg) {
+  private void onReadRequest(ReadRequest msg) {
     if (!serving) {
       getSender().tell(new OperationFailed(msg.key, "Node not serving yet"), getSelf());
       return;
     }
-    logger.log("Received GetRequest for key=" + msg.key);
+    logger.log("Received ReadRequest for key=" + msg.key);
 
     if (writeLocks.containsKey(msg.key)) {
       getSender().tell(new OperationFailed(msg.key, "Another write in progress for this key"), getSelf());
-      logger.log("Rejected GetRequest for key=" + msg.key + " due to ongoing write");
+      logger.log("Rejected ReadRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
 
     // Start version gathering phase
     List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes, nodeIdMap);
     for (ActorRef node : responsibleNodes) {
-      logger.log("Notifying node " + nodeIdMap.get(node) + " for GetRequest: key=" + msg.key + " client=" + getSender().path().name());
-      node.tell(new GetVersion(msg.key, getSelf(), getSender()), getSelf());
+      logger.log("Notifying node " + nodeIdMap.get(node) + " for ReadRequest: key=" + msg.key + " client="
+          + getSender().path().name());
+      node.tell(new GetVersionRead(msg.key, getSelf(), getSender()), getSelf());
     }
 
     // Initialize coordinator state + start timeout
@@ -556,28 +557,29 @@ public class Node extends AbstractActor {
   }
 
   /**
-   * Handles client Put: acts as coordinator, gathers versions, computes new
+   * Handles client Write: acts as coordinator, gathers versions, computes new
    * version, writes to replicas with timeout.
    */
-  private void onUpdateRequest(UpdateRequest msg) {
+  private void onWriteRequest(WriteRequest msg) {
     if (!serving) {
       getSender().tell(new OperationFailed(msg.key, msg.value, "Node not serving yet"), getSelf());
       return;
     }
-    logger.log("Received UpdateRequest for key=" + msg.key + " value=\"" + msg.value + "\"");
+    logger.log("Received WriteRequest for key=" + msg.key + " value=\"" + msg.value + "\"");
 
     // Check if some node is already coordinating a write for this key
     if (writeLocks.containsKey(msg.key)) {
       getSender().tell(new OperationFailed(msg.key, msg.value, "Another write in progress for this key"), getSelf());
-      logger.log("Rejected UpdateRequest for key=" + msg.key + " due to ongoing write");
+      logger.log("Rejected WriteRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
 
     // Start version gathering phase
     List<ActorRef> responsibleNodes = getResponsibleNodes(msg.key, nodes, nodeIdMap);
     for (ActorRef node : responsibleNodes) {
-      logger.log("Notifying node " + nodeIdMap.get(node) + " for UpdateRequest: key=" + msg.key + " value=\"" + msg.value + "\"");
-      node.tell(new UpdateVersion(msg.key, getSelf()), getSelf());
+      logger.log("Notifying node " + nodeIdMap.get(node) + " for WriteRequest: key=" + msg.key + " value=\"" + msg.value
+          + "\"");
+      node.tell(new GetVersionWrite(msg.key, getSelf()), getSelf());
     }
 
     // Initialize coordinator state + start timeout
@@ -586,11 +588,11 @@ public class Node extends AbstractActor {
   }
 
   /** Replies with the current version/value of a key to the requester. */
-  private void onGetVersion(GetVersion msg) {
+  private void onGetVersionRead(GetVersionRead msg) {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
-      logger.log("Rejected GetVersion for key=" + msg.key + " due to ongoing write");
-      msg.coordinator.tell(new GetVersionResponse(msg.key, -1, "", msg.requester), getSelf());
+      logger.log("Rejected GetVersionRead for key=" + msg.key + " due to ongoing write");
+      msg.coordinator.tell(new VersionReadResponse(msg.key, -1, "", msg.requester), getSelf());
       return;
     }
 
@@ -601,30 +603,34 @@ public class Node extends AbstractActor {
       version = item.version;
       value = item.value;
     }
-    logger.log("Replied GetVersion for key=" + msg.key + " v=" + version);
-    msg.coordinator.tell(new GetVersionResponse(msg.key, version, value, msg.requester), getSelf());
+    logger.log("Replied GetVersionRead for key=" + msg.key + " v=" + version);
+    msg.coordinator.tell(new VersionReadResponse(msg.key, version, value, msg.requester), getSelf());
   }
 
-  private void onGetVersionResponse(GetVersionResponse msg) {
+  private void onVersionReadResponse(VersionReadResponse msg) {
     if (msg.version == -1) {
       // The sender node is busy with another write
       if (mode == Mode.JOINING || mode == Mode.RECOVERING) {
-        logger.logError("Maintenance GetVersionResponse for key=" + msg.key
+        logger.logError("Maintenance VersionReadResponse for key=" + msg.key
             + " rejected by node " + nodeIdMap.get(getSender()) + " due to ongoing write");
       }
-      logger.log("Ignored GetVersionResponse for key=" + msg.key + " due to ongoing write");
+      logger.log("Ignored VersionReadResponse for key=" + msg.key + " due to ongoing write");
       return;
     }
 
     ReadCoordinatorState state = activeReadCoordinators.get(msg.key + " " + msg.requester.path().name());
     if (state == null) {
       // No active read for this key (maybe quorum already reached)
-      // TODO: is this a problem? check storage of all coordinators to understand if it is a already handled read or a lost message
-      logger.log("Looking for read coordinator for (" + msg.key + " " + msg.requester.path().name() + "): not found");
-      // Show my coordinators for debugging
-      for (String k : activeReadCoordinators.keySet()) {
-        logger.log("Active read coordinator: " + k);
-      }
+      // TODO: is this a problem? check storage of all coordinators to understand if
+      // it is a already handled read or a lost message
+
+      // DEBUG:
+      // logger.log("Looking for read coordinator for (" + msg.key + " " +
+      // msg.requester.path().name() + "): not found");
+      // // Show my coordinators for debugging
+      // for (String k : activeReadCoordinators.keySet()) {
+      // logger.log("Active read coordinator: " + k);
+      // }
       return;
     }
 
@@ -636,7 +642,7 @@ public class Node extends AbstractActor {
         .sorted()
         .reduce((a, b) -> a + ", " + b)
         .orElse("");
-    logger.log("(Read) GetVersion responses: " + versionsSummary);
+    logger.log("(Read) GetVersionRead responses: " + versionsSummary);
 
     if (state.versionReplies.size() >= R) {
       // Quorum reached, get the response with the highest version
@@ -654,7 +660,7 @@ public class Node extends AbstractActor {
       // Respond to client if this is an external read
       if (mode == Mode.IDLE && state.client != getSelf()) {
         logger.log("(Read) Returning value v=" + maxVersionResponse.version + " to client");
-        state.client.tell(new Client.GetResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version),
+        state.client.tell(new Client.ReadResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version),
             getSelf());
       }
 
@@ -676,10 +682,10 @@ public class Node extends AbstractActor {
     }
   }
 
-  private void onUpdateVersion(UpdateVersion msg) {
+  private void onGetVersionWrite(GetVersionWrite msg) {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
-      msg.requester.tell(new UpdateVersionResponse(msg.key, -1, ""), getSelf());
+      msg.requester.tell(new VersionWriteResponse(msg.key, -1, ""), getSelf());
       return;
     }
     writeLocks.put(msg.key, getSender());
@@ -691,13 +697,13 @@ public class Node extends AbstractActor {
       version = item.version;
       value = item.value;
     }
-    msg.requester.tell(new UpdateVersionResponse(msg.key, version, value), getSelf());
+    msg.requester.tell(new VersionWriteResponse(msg.key, version, value), getSelf());
   }
 
-  private void onUpdateVersionResponse(UpdateVersionResponse msg) {
+  private void onVersionWriteResponse(VersionWriteResponse msg) {
     if (msg.version == -1) {
       // The sender node is busy with another write
-      logger.log("Ignored UpdateVersionResponse for key=" + msg.key + " due to ongoing write");
+      logger.log("Ignored VersionWriteResponse for key=" + msg.key + " due to ongoing write");
       return;
     }
 
@@ -715,7 +721,7 @@ public class Node extends AbstractActor {
         .sorted()
         .reduce((a, b) -> a + ", " + b)
         .orElse("");
-    logger.log("(Write) UpdateVersion responses: " + versionsSummary);
+    logger.log("(Write) GetVersionWrite responses: " + versionsSummary);
 
     if (state.versionReplies.size() >= W && state.newVersion == 0) {
       // Quorum reached, compute new version
@@ -731,7 +737,7 @@ public class Node extends AbstractActor {
       for (ActorRef node : state.responsibleNodes) {
         node.tell(new UpdateValue(state.key, state.newVersion, state.newValue), getSelf());
       }
-      state.client.tell(new Client.UpdateResponse(state.key, state.newValue, state.newVersion), getSelf());
+      state.client.tell(new Client.WriteResponse(state.key, state.newValue, state.newVersion), getSelf());
 
       // Cleanup state, timeout and lock
       if (state.timeout != null && !state.timeout.isCancelled()) {
@@ -746,10 +752,12 @@ public class Node extends AbstractActor {
    * Handles actual value update on replicas, checking version and write lock.
    */
   private void onUpdateValue(UpdateValue msg) {
-    // if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
-    //   // TODO: is a problem?
-    //   logger.log("Ignored UpdateValue for key=" + msg.key + " due to ongoing write");
-    //   return;
+    // if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) !=
+    // getSender()) {
+    // // TODO: is a problem?
+    // logger.log("Ignored UpdateValue for key=" + msg.key + " due to ongoing
+    // write");
+    // return;
     // }
     writeLocks.remove(msg.key);
 
@@ -767,7 +775,7 @@ public class Node extends AbstractActor {
    * Handles write timeout: if quorum W not reached, fail client and clean
    * coordinator state.
    */
-  private void onUpdateTimeout(UpdateTimeout msg) {
+  private void onWriteTimeout(WriteTimeout msg) {
     WriteCoordinatorState state = activeWriteCoordinators.get(msg.key);
     if (state == null) {
       return; // Already completed
@@ -779,7 +787,7 @@ public class Node extends AbstractActor {
       state.timeout.cancel();
     }
     if (state.versionReplies.size() < W) {
-      logger.log("UpdateTimeout for key " + state.key + ": quorum not reached");
+      logger.log("WriteTimeout for key " + state.key + ": quorum not reached");
       for (ActorRef node : state.responsibleNodes) {
         if (node != getSelf()) {
           node.tell(new OperationFailed(state.key, state.newValue, "Write quorum not reached"), getSelf());
@@ -891,7 +899,7 @@ public class Node extends AbstractActor {
       this.mode = Mode.RECOVERING;
       this.serving = false;
       getContext().become(joiningRecoveringReceive());
-      msg.bootstrap.tell(new GetPeersRequest(), getSelf());
+      msg.bootstrap.tell(new GetPeers(), getSelf());
 
       // Schedule a timeout in case bootstrap doesn't respond
       getContext().system().scheduler().scheduleOnce(
@@ -908,16 +916,17 @@ public class Node extends AbstractActor {
   }
 
   /** Returns the current membership view to the requester (bootstrap helper). */
-  private void onGetPeersRequest(GetPeersRequest msg) {
+  private void onGetPeers(GetPeers msg) {
     // Answer with current nodes and their IDs
-    getSender().tell(new PeerSet(new ArrayList<>(nodes), new HashMap<>(nodeIdMap)), getSelf());
+    getSender().tell(new PeerResponse(new ArrayList<>(nodes), new HashMap<>(nodeIdMap)), getSelf());
   }
 
   /**
-   * Handles a PeerSet from bootstrap: complete JOIN/RECOVERY setup or refresh
+   * Handles a PeerResponse from bootstrap: complete JOIN/RECOVERY setup or
+   * refresh
    * view.
    */
-  private void onPeerSet(PeerSet msg) {
+  private void onPeerResponse(PeerResponse msg) {
     nodes.clear();
     nodes.addAll(msg.nodes);
     nodeIdMap.putAll(msg.nodeIds);
@@ -951,7 +960,7 @@ public class Node extends AbstractActor {
     }
 
     else {
-      logger.log("Received PeerSet in mode " + mode + ", ignoring.");
+      logger.log("Received PeerResponse in mode " + mode + ", ignoring.");
       return;
     }
   }
@@ -980,6 +989,9 @@ public class Node extends AbstractActor {
    * maintenance) or generic transfer.
    */
   private void onDataItemsBatch(DataItemsBatch msg) {
+    // TODO: this message is used in JOIN and RECOVER operations, if the requesting
+    // nodes reach this message means that bootstrap and the successor/predecessor
+    // are alive and not crashed. So, the timeout can be cancelled.
     if (mode == Mode.JOINING) {
       // 1) Store received items
       store.clear();
@@ -1089,23 +1101,23 @@ public class Node extends AbstractActor {
     return receiveBuilder()
         .match(JoinGroupMsg.class, this::onJoinGroupMsg)
 
-        .match(GetRequest.class, this::onGetRequest)
-        .match(UpdateRequest.class, this::onUpdateRequest)
+        .match(ReadRequest.class, this::onReadRequest)
+        .match(WriteRequest.class, this::onWriteRequest)
 
-        .match(GetVersion.class, this::onGetVersion)
-        .match(GetVersionResponse.class, this::onGetVersionResponse)
+        .match(GetVersionRead.class, this::onGetVersionRead)
+        .match(VersionReadResponse.class, this::onVersionReadResponse)
 
-        .match(UpdateVersion.class, this::onUpdateVersion)
-        .match(UpdateVersionResponse.class, this::onUpdateVersionResponse)
+        .match(GetVersionWrite.class, this::onGetVersionWrite)
+        .match(VersionWriteResponse.class, this::onVersionWriteResponse)
 
         .match(UpdateValue.class, this::onUpdateValue)
 
-        .match(UpdateTimeout.class, this::onUpdateTimeout)
+        .match(WriteTimeout.class, this::onWriteTimeout)
         .match(ReadTimeout.class, this::onReadTimeout)
 
         // Membership & transfer
         .match(NodeAction.class, this::onNodeAction)
-        .match(GetPeersRequest.class, this::onGetPeersRequest)
+        .match(GetPeers.class, this::onGetPeers)
 
         .match(ItemRequest.class, this::onItemRequest)
         .match(AnnounceJoin.class, this::onAnnounceJoin)
@@ -1116,19 +1128,19 @@ public class Node extends AbstractActor {
         .build();
   }
 
-  // Behavior di JOIN/RECOVERY: nessun Put/Get; gestisce bootstrap e catch-up
+  // Behavior di JOIN/RECOVERY: nessun Write/Get; gestisce bootstrap e catch-up
   private Receive joiningRecoveringReceive() {
     return receiveBuilder()
         .match(JoinTimeout.class, this::onJoinTimeout)
 
-        .match(PeerSet.class, this::onPeerSet)
+        .match(PeerResponse.class, this::onPeerResponse)
         .match(DataItemsBatch.class, this::onDataItemsBatch)
-        .match(GetVersionResponse.class, this::onGetVersionResponse)
+        .match(VersionReadResponse.class, this::onVersionReadResponse)
 
         .match(ReadTimeout.class, this::onReadTimeout)
 
-        .match(GetRequest.class, this::onGetRequest)
-        .match(UpdateRequest.class, this::onUpdateRequest)
+        .match(ReadRequest.class, this::onReadRequest)
+        .match(WriteRequest.class, this::onWriteRequest)
         .build();
   }
 

@@ -18,18 +18,9 @@ public class Client extends AbstractActor {
   private final Logger logger;
   private final List<ActorRef> nodes;
   private final Random random = new Random();
-  private final Map<String, PendingRequest> pendingRequests = new HashMap<>();
+  private final Map<String, Cancellable> pendingRequests = new HashMap<>();
+
   private final int timeoutSeconds;
-
-  private static class PendingRequest {
-    final Object request;
-    final Cancellable timeout;
-
-    PendingRequest(Object request, Cancellable timeout) {
-      this.request = request;
-      this.timeout = timeout;
-    }
-  }
 
   private final ActorRef manager; // reference to the main actor (controller/test)
 
@@ -37,7 +28,7 @@ public class Client extends AbstractActor {
     this.nodes = nodes;
     this.logger = new Logger(name);
     this.manager = manager;
-    this.timeoutSeconds = timeoutSeconds;
+    this.timeoutSeconds = timeoutSeconds * 2; // Safety margin
   }
 
   public static Props props(List<ActorRef> nodes, String name, ActorRef manager, int timeoutSeconds) {
@@ -46,55 +37,55 @@ public class Client extends AbstractActor {
 
   // === Messages ===
 
-  public static class Update implements Serializable {
+  public static class Write implements Serializable {
     public ActorRef node = null; // Optional specific node to target
     public final int key;
     public final String value;
 
-    public Update(int key, String value) {
+    public Write(int key, String value) {
       this.key = key;
       this.value = value;
     }
 
-    public Update(ActorRef node, int key, String value) {
+    public Write(ActorRef node, int key, String value) {
       this.node = node;
       this.key = key;
       this.value = value;
     }
   }
 
-  public static class Get implements Serializable {
+  public static class Read implements Serializable {
     public ActorRef node = null; // Optional specific node to target
     public final int key;
 
-    public Get(int key) {
+    public Read(int key) {
       this.key = key;
     }
 
-    public Get(ActorRef node, int key) {
+    public Read(ActorRef node, int key) {
       this.node = node;
       this.key = key;
     }
   }
 
-  public static class UpdateResponse implements Serializable {
+  public static class WriteResponse implements Serializable {
     public final int key;
     public final String value;
     public final int version;
 
-    public UpdateResponse(int key, String value, int version) {
+    public WriteResponse(int key, String value, int version) {
       this.key = key;
       this.value = value;
       this.version = version;
     }
   }
 
-  public static class GetResponse implements Serializable {
+  public static class ReadResponse implements Serializable {
     public final int key;
     public final String value;
     public final int version;
 
-    public GetResponse(int key, String value, int version) {
+    public ReadResponse(int key, String value, int version) {
       this.key = key;
       this.value = value;
       this.version = version;
@@ -133,10 +124,10 @@ public class Client extends AbstractActor {
 
   // === Handlers ===
 
-  private void onUpdate(Update msg) {
-    String requestId = "UPDATE " + msg.key + " " + msg.value;
+  private void onWrite(Write msg) {
+    String requestId = "WRITE " + msg.key + " " + msg.value;
     if (nodes.isEmpty()) {
-      sendResponse(requestId, false, "No available nodes to handle Update.");
+      sendResponse(requestId, false, "No available nodes to handle Write.");
       return;
     }
     if (pendingRequests.containsKey(requestId)) {
@@ -145,16 +136,16 @@ public class Client extends AbstractActor {
     }
 
     ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
-    logger.log("Sending UpdateRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + target.path().name());
-    target.tell(new Node.UpdateRequest(msg.key, msg.value), getSelf());
+    logger.log("Sending WriteRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + target.path().name());
+    target.tell(new Node.WriteRequest(msg.key, msg.value), getSelf());
 
     startRequest(requestId, msg);
   }
 
-  private void onGet(Get msg) {
-    String requestId = "GET " + msg.key;
+  private void onRead(Read msg) {
+    String requestId = "READ " + msg.key;
     if (nodes.isEmpty()) {
-      sendResponse(requestId, false, "No available nodes to handle Get.");
+      sendResponse(requestId, false, "No available nodes to handle Read.");
       return;
     }
     if (pendingRequests.containsKey(requestId)) {
@@ -163,24 +154,24 @@ public class Client extends AbstractActor {
     }
 
     ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
-    logger.log("Sending GetRequest key=" + msg.key + " to " + target.path().name());
-    target.tell(new Node.GetRequest(msg.key), getSelf());
+    logger.log("Sending ReadRequest key=" + msg.key + " to " + target.path().name());
+    target.tell(new Node.ReadRequest(msg.key), getSelf());
 
     startRequest(requestId, msg);
   }
 
-  private void onUpdateResponse(UpdateResponse msg) {
-    logger.log("Received UpdateResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
-    cancelRequest("UPDATE " + msg.key + " " + msg.value);
-    sendResponse("UPDATE " + msg.key + " " + msg.value, true,
-        "Update successful for key=" + msg.key + " version=" + msg.version);
+  private void onWriteResponse(WriteResponse msg) {
+    logger.log("Received WriteResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
+    cancelRequest("WRITE " + msg.key + " " + msg.value);
+    sendResponse("WRITE " + msg.key + " " + msg.value, true,
+        "Write successful for key=" + msg.key + " version=" + msg.version);
   }
 
 
-  private void onGetResponse(GetResponse msg) {
-    logger.log("Received GetResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
-    cancelRequest("GET " + msg.key);
-    sendResponse("GET " + msg.key, true, "Value=\"" + msg.value + "\" version=" + msg.version);
+  private void onReadResponse(ReadResponse msg) {
+    logger.log("Received ReadResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
+    cancelRequest("READ " + msg.key);
+    sendResponse("READ " + msg.key, true, "Value=\"" + msg.value + "\" version=" + msg.version);
   }
 
   private void onUpdateNodeList(UpdateNodeList msg) {
@@ -192,24 +183,24 @@ public class Client extends AbstractActor {
   }
 
   private void onOperationFailed(Node.OperationFailed msg) {
-    String requestId = "UPDATE " + msg.key + " " + msg.value;
+    String requestId = "WRITE " + msg.key + " " + msg.value;
 
     // Try to cancel the request if still pending
-    PendingRequest pr = pendingRequests.remove(requestId);
+    Cancellable pr = pendingRequests.remove(requestId);
     if (pr != null) {
-      if (!pr.timeout.isCancelled()) {
-        pr.timeout.cancel();
+      if (!pr.isCancelled()) {
+        pr.cancel();
       }
       logger.logError("Operation failed for key=" + msg.key + ": " + msg.reason);
       sendResponse(requestId, false, "Operation failed: " + msg.reason);
     } else {
       // The request was already completed (likely timed out)
-      logger.log("Ignored late OperationFailed for key=" + msg.key + " (request already handled)");
+      // logger.log("Ignored late OperationFailed for key=" + msg.key + " (request already handled)");
     }
   }
 
-  private void onTimeout(OperationTimeout msg) {
-    PendingRequest pr = pendingRequests.remove(msg.requestId);
+  private void onOperationTimeout(OperationTimeout msg) {
+    Cancellable pr = pendingRequests.remove(msg.requestId);
     if (pr != null) {
       logger.logError("Timeout reached for request: " + msg.requestId);
       sendResponse(msg.requestId, false, "Timeout waiting for response.");
@@ -227,14 +218,14 @@ public class Client extends AbstractActor {
         context().dispatcher(),
         ActorRef.noSender());
 
-    pendingRequests.put(requestId, new PendingRequest(request, timeout));
+    pendingRequests.put(requestId, timeout);
   }
 
   // Cancel a request by ID
   private void cancelRequest(String requestId) {
-    PendingRequest pr = pendingRequests.remove(requestId);
-    if (pr != null && !pr.timeout.isCancelled()) {
-      pr.timeout.cancel();
+    Cancellable pr = pendingRequests.remove(requestId);
+    if (pr != null && !pr.isCancelled()) {
+      pr.cancel();
     }
   }
 
@@ -246,13 +237,13 @@ public class Client extends AbstractActor {
   @Override
   public Receive createReceive() {
     return receiveBuilder()
-        .match(Update.class, this::onUpdate)
-        .match(Get.class, this::onGet)
-        .match(UpdateResponse.class, this::onUpdateResponse)
-        .match(GetResponse.class, this::onGetResponse)
+        .match(Write.class, this::onWrite)
+        .match(Read.class, this::onRead)
+        .match(WriteResponse.class, this::onWriteResponse)
+        .match(ReadResponse.class, this::onReadResponse)
         .match(UpdateNodeList.class, this::onUpdateNodeList)
         .match(Node.OperationFailed.class, this::onOperationFailed)
-        .match(OperationTimeout.class, this::onTimeout)
+        .match(OperationTimeout.class, this::onOperationTimeout)
         .build();
   }
 }
