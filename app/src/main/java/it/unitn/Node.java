@@ -30,7 +30,7 @@ public class Node extends AbstractActor {
   private final ActorRef testManager;
   private ActorRef bootstrap; // Bootstrap node for joining
   private Mode mode; // Current mode of the node
-  private boolean serving;
+  private boolean serving;  // TODO: only used on client requests which already have set a timeout
 
   private final Map<Integer, DataItem> store = new HashMap<>();
   private final Map<Integer, ActorRef> writeLocks = new HashMap<>();
