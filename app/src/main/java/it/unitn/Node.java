@@ -50,9 +50,9 @@ public class Node extends AbstractActor {
 
   // Active coordinator states for ongoing write and read operations
   // key -> state
-  private final Map<Integer, WriteCoordinatorState> activeWriteCoordinators = new HashMap<>();
+  private final Map<Integer, WriteRequestState> writeRequestList = new HashMap<>();
   // "key + clientName" -> state
-  private final Map<String, ReadCoordinatorState> activeReadCoordinators = new HashMap<>();
+  private final Map<String, ReadRequestState> readRequestList = new HashMap<>();
 
   /** Constructs a node with its id and quorum parameters (N,R,W). */
   public Node(int nodeId, int N, int R, int W, boolean joining, ActorRef testManager, ActorRef bootstrap,
@@ -118,7 +118,7 @@ public class Node extends AbstractActor {
   // Coordinator State Classes
   // =====================
 
-  private class WriteCoordinatorState {
+  private class WriteRequestState {
     public final int key;
     public final String newValue;
     public final ActorRef client;
@@ -128,7 +128,7 @@ public class Node extends AbstractActor {
     public final Map<ActorRef, VersionResponse> versionReplies = new HashMap<>();
     public Cancellable timeout;
 
-    public WriteCoordinatorState(int key, String newValue, ActorRef client, List<ActorRef> responsibleNodes) {
+    public WriteRequestState(int key, String newValue, ActorRef client, List<ActorRef> responsibleNodes) {
       this.key = key;
       this.newValue = newValue;
       this.client = client;
@@ -144,13 +144,13 @@ public class Node extends AbstractActor {
   }
 
   // Coordinator state for reads
-  private class ReadCoordinatorState {
+  private class ReadRequestState {
     public final int key;
     public final ActorRef client;
     public final Map<ActorRef, VersionResponse> versionReplies = new HashMap<>();
     public final Cancellable timeout;
 
-    public ReadCoordinatorState(int key, ActorRef client) {
+    public ReadRequestState(int key, ActorRef client) {
       this.key = key;
       this.client = client;
 
@@ -237,8 +237,8 @@ public class Node extends AbstractActor {
     }
     // Update pending keys set and start reads
     for (Integer key : keys) {
-      ReadCoordinatorState state = new ReadCoordinatorState(key, getSelf());
-      activeReadCoordinators.put(key + " " + getSelf().path().name(), state);
+      ReadRequestState state = new ReadRequestState(key, getSelf());
+      readRequestList.put(key + " " + getSelf().path().name(), state);
 
       for (ActorRef node : getResponsibleNodes(key, nodes, nodeIdMap)) {
         node.tell(new GetVersionRead(key, getSelf(), null), getSelf());
@@ -247,7 +247,7 @@ public class Node extends AbstractActor {
   }
 
   private boolean hasActiveMaintenanceCoordinators() {
-    for (ReadCoordinatorState state : activeReadCoordinators.values()) {
+    for (ReadRequestState state : readRequestList.values()) {
       if (state.client == getSelf()) {
         return true;
       }
@@ -551,8 +551,8 @@ public class Node extends AbstractActor {
     }
 
     // Initialize coordinator state + start timeout
-    ReadCoordinatorState state = new ReadCoordinatorState(msg.key, getSender());
-    activeReadCoordinators.put(msg.key + " " + getSender().path().name(), state);
+    ReadRequestState state = new ReadRequestState(msg.key, getSender());
+    readRequestList.put(msg.key + " " + getSender().path().name(), state);
     logger.log("Started read coordinator for key= (" + msg.key + " " + getSender().path().name() + ")");
   }
 
@@ -583,8 +583,8 @@ public class Node extends AbstractActor {
     }
 
     // Initialize coordinator state + start timeout
-    WriteCoordinatorState state = new WriteCoordinatorState(msg.key, msg.value, getSender(), responsibleNodes);
-    activeWriteCoordinators.put(msg.key, state);
+    WriteRequestState state = new WriteRequestState(msg.key, msg.value, getSender(), responsibleNodes);
+    writeRequestList.put(msg.key, state);
   }
 
   /** Replies with the current version/value of a key to the requester. */
@@ -618,7 +618,7 @@ public class Node extends AbstractActor {
       return;
     }
 
-    ReadCoordinatorState state = activeReadCoordinators.get(msg.key + " " + msg.requester.path().name());
+    ReadRequestState state = readRequestList.get(msg.key + " " + msg.requester.path().name());
     if (state == null) {
       // No active read for this key (maybe quorum already reached)
       // TODO: is this a problem? check storage of all coordinators to understand if
@@ -628,7 +628,7 @@ public class Node extends AbstractActor {
       // logger.log("Looking for read coordinator for (" + msg.key + " " +
       // msg.requester.path().name() + "): not found");
       // // Show my coordinators for debugging
-      // for (String k : activeReadCoordinators.keySet()) {
+      // for (String k : readRequestList.keySet()) {
       // logger.log("Active read coordinator: " + k);
       // }
       return;
@@ -668,7 +668,7 @@ public class Node extends AbstractActor {
       if (state.timeout != null && !state.timeout.isCancelled()) {
         state.timeout.cancel();
       }
-      activeReadCoordinators.remove(msg.key + " " + msg.requester.path().name());
+      readRequestList.remove(msg.key + " " + msg.requester.path().name());
 
       // Maintenance check
       if (mode == Mode.JOINING || mode == Mode.RECOVERING) {
@@ -707,7 +707,7 @@ public class Node extends AbstractActor {
       return;
     }
 
-    WriteCoordinatorState state = activeWriteCoordinators.get(msg.key);
+    WriteRequestState state = writeRequestList.get(msg.key);
     if (state == null) {
       // No active write for this key (maybe quorum already reached)
       return;
@@ -744,7 +744,7 @@ public class Node extends AbstractActor {
         state.timeout.cancel();
       }
       writeLocks.remove(state.key);
-      activeWriteCoordinators.remove(state.key);
+      writeRequestList.remove(state.key);
     }
   }
 
@@ -776,13 +776,13 @@ public class Node extends AbstractActor {
    * coordinator state.
    */
   private void onWriteTimeout(WriteTimeout msg) {
-    WriteCoordinatorState state = activeWriteCoordinators.get(msg.key);
+    WriteRequestState state = writeRequestList.get(msg.key);
     if (state == null) {
       return; // Already completed
     }
 
     writeLocks.remove(state.key);
-    activeWriteCoordinators.remove(state.key);
+    writeRequestList.remove(state.key);
     if (state.timeout != null && !state.timeout.isCancelled()) {
       state.timeout.cancel();
     }
@@ -802,12 +802,12 @@ public class Node extends AbstractActor {
    * coordinator state.
    */
   private void onReadTimeout(ReadTimeout msg) {
-    ReadCoordinatorState state = activeReadCoordinators.get(msg.key + " " + msg.requester.path().name());
+    ReadRequestState state = readRequestList.get(msg.key + " " + msg.requester.path().name());
     if (state == null) {
       return; // Already completed
     }
 
-    activeReadCoordinators.remove(msg.key + " " + msg.requester.path().name());
+    readRequestList.remove(msg.key + " " + msg.requester.path().name());
     if (state.timeout != null && !state.timeout.isCancelled()) {
       state.timeout.cancel();
     }
