@@ -25,13 +25,13 @@ public class Node extends AbstractActor {
 
   private final int nodeId; // TODO: need to be treated as unsigned int
   private final List<ActorRef> nodes = new ArrayList<>();
-  private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Mappa ActorRef -> nodeId dei peer conosciuti
+  private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Map of node ActorRef to nodeId
   private boolean joining;
   private final ActorRef testManager;
   private ActorRef bootstrap; // Bootstrap node for joining
   private Mode mode; // Current mode of the node
-  private boolean serving;  // TODO: only used on client requests which already have set a timeout? SEE JOIN / RECOVERY MESSAGE DISPATCHERS
-  //TODO: MAP KEYneed to be treated as unsigned int
+  private boolean serving;
+  // TODO: MAP KEYneed to be treated as unsigned int
   private final Map<Integer, DataItem> store = new HashMap<>();
   private final Map<Integer, ActorRef> writeLocks = new HashMap<>();
 
@@ -620,17 +620,7 @@ public class Node extends AbstractActor {
 
     ReadRequestState state = readRequestList.get(msg.key + " " + msg.requester.path().name());
     if (state == null) {
-      // No active read for this key (maybe quorum already reached)
-      // TODO: is this a problem? check storage of all coordinators to understand if
-      // it is a already handled read or a lost message. COMMENT: It's ok i guess, if the quorum has been reached there is no need to handle it anymore
-
-      // DEBUG:
-      // logger.log("Looking for read coordinator for (" + msg.key + " " +
-      // msg.requester.path().name() + "): not found");
-      // // Show my coordinators for debugging
-      // for (String k : readRequestList.keySet()) {
-      // logger.log("Active read coordinator: " + k);
-      // }
+      // No active read for this key+client (quorum and request already completed)
       return;
     }
 
@@ -752,13 +742,11 @@ public class Node extends AbstractActor {
    * Handles actual value update on replicas, checking version and write lock.
    */
   private void onUpdateValue(UpdateValue msg) {
-    // if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
-    // TODO: is a problem? 
-    // COMMENT: I don't understand when this can happen and what u are checking here
-    // logger.log("Ignored UpdateValue for key=" + msg.key + " due to ongoing
-    // write");
-    // return;
-    // }
+    if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
+      // This node should not receive UpdateValue from a node that does not hold the lock for this key
+      logger.log("Rejected UpdateValue for key=" + msg.key + " due to lock held by another node");
+      return;
+    }
     writeLocks.remove(msg.key);
 
     DataItem current = store.get(msg.key);
