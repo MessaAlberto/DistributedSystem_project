@@ -464,7 +464,6 @@ public class TestManager extends AbstractActor {
     int targetId;
     String act = action.toLowerCase();
     ActorRef bootstrap = null;
-    List<ActorRef> allNodes = new ArrayList<>();
 
     switch (act) {
       case "join":
@@ -474,16 +473,8 @@ public class TestManager extends AbstractActor {
           return;
         }
 
-        allNodes.addAll(activeNodes);
-        allNodes.addAll(crashedNodes);
-
-        if (allNodes.isEmpty()) {
-          logger.logError("Cannot join: no nodes available for bootstrap");
-          return;
-        }
-
         isViewChangedStable = false;
-        bootstrap = allNodes.get(random.nextInt(allNodes.size()));
+        bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
         targetNode = system.actorOf(Node.props(targetId, N, R, W, true, self(), bootstrap, timeoutSeconds),
             "Node" + targetId);
 
@@ -509,15 +500,8 @@ public class TestManager extends AbstractActor {
         isViewChangedStable = false;
         targetId = nodeIdMap.get(targetNode);
         if (act.equals("recover")) {
-          allNodes.addAll(activeNodes);
-          allNodes.addAll(crashedNodes);
 
-          if (allNodes.isEmpty()) {
-            logger.logError("Cannot recover: no nodes available for bootstrap");
-            return;
-          }
-
-          bootstrap = allNodes.get(random.nextInt(allNodes.size()));
+          bootstrap = activeNodes.get(random.nextInt(activeNodes.size()));
           targetNode.tell(new Node.NodeAction(act, bootstrap), ActorRef.noSender());
         } else {
           targetNode.tell(new Node.NodeAction(act), ActorRef.noSender());
