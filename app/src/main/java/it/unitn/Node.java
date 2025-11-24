@@ -276,13 +276,15 @@ public class Node extends AbstractActor {
           sendWithRandomDelay(p, new AnnounceJoin(getSelf(), nodeId));
         }
       }
-      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, true));
+      testManager.tell(new TestManager.NodeActionResponse("join", nodeId, true), getSelf());
+      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
       logger.log("JOIN completed (maintenance done) and serving.");
     } else if (mode == Mode.RECOVERING) {
-      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, true));
+      testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, true), getSelf());
+      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
@@ -818,7 +820,8 @@ public class Node extends AbstractActor {
       return; // Already joined or not joining
     }
     logger.logError("JoinTimeout: bootstrap did not respond in time");
-    sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, false));
+    testManager.tell(new TestManager.NodeActionResponse("join", nodeId, false), getSelf());
+    //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, false));
     getContext().stop(getSelf());
   }
 
@@ -828,7 +831,8 @@ public class Node extends AbstractActor {
       return; // Already recovered or not recovering
     }
     logger.logError("RecoverTimeout: bootstrap did not respond in time");
-    sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, false));
+    testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, false), getSelf());
+    //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, false));
     mode = Mode.CRASHED;
     getContext().become(crashedReceive());
   }
@@ -868,8 +872,8 @@ public class Node extends AbstractActor {
       for (ActorRef p : tempNodes) {
         sendWithRandomDelay(p, new AnnounceLeave(getSelf(), nodeId));
       }
-
-      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("leave", nodeId, true));
+      testManager.tell(new TestManager.NodeActionResponse("leave", nodeId, true), getSelf());
+      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("leave", nodeId, true));
       getContext().stop(getSelf()); // stop the actor
     }
 
@@ -882,7 +886,8 @@ public class Node extends AbstractActor {
       this.serving = false;
       getContext().become(crashedReceive());
       logger.log("Crashing node");
-      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("crash", nodeId, true));
+      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("crash", nodeId, true));
+      testManager.tell(new TestManager.NodeActionResponse("crash", nodeId, true), getSelf());
     }
 
     else if (msg.action.equals("recover")) {

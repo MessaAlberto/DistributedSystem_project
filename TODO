@@ -1,5 +1,5 @@
 On Node
-- [ ] add random time delay
+- [x] add random time delay
 - [ ] set the coordinator with the request (ora è sempre il nodo che riceve la richiesta)
 - [x] versioning + quorum -> sequential order 
       (già implementato con DataItem.version, GetVersionRequest/Response, quorum R/W)
