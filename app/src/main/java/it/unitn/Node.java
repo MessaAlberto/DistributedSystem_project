@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import akka.actor.AbstractActor;
@@ -43,6 +44,12 @@ public class Node extends AbstractActor {
   private final int timeoutSeconds;
   private Cancellable joinTimeout; // TODO
   private Cancellable recoverTimeout;
+
+  //dealy parameters
+
+  private static final long MIN_PROP_DELAY_MS = 10;
+  private static final long MAX_PROP_DELAY_MS = 60;
+
 
   // Keys that need to be recovered during JOIN/RECOVERY
   private final Set<Integer> recoveryKeysBuffer = new HashSet<>();
@@ -95,7 +102,7 @@ public class Node extends AbstractActor {
       getContext().become(joiningRecoveringReceive());
 
       // Ask to bootstrap for current peers
-      bootstrap.tell(new GetPeers(), getSelf());
+      sendWithRandomDelay(bootstrap, new GetPeers());
 
       // Schedule a timeout in case bootstrap doesn't respond
       joinTimeout = getContext().system().scheduler().scheduleOnce(
@@ -241,7 +248,7 @@ public class Node extends AbstractActor {
       readRequestList.put(key + " " + getSelf().path().name(), state);
 
       for (ActorRef node : getResponsibleNodes(key, nodes, nodeIdMap)) {
-        node.tell(new GetVersionRead(key, getSelf(), null), getSelf());
+        sendWithRandomDelay(node, new GetVersionRead(key, getSelf(), null));
       }
     }
   }
@@ -266,16 +273,16 @@ public class Node extends AbstractActor {
       // Announce join to other nodes
       for (ActorRef p : nodes) {
         if (p != getSelf()) {
-          p.tell(new AnnounceJoin(getSelf(), nodeId), getSelf());
+          sendWithRandomDelay(p, new AnnounceJoin(getSelf(), nodeId));
         }
       }
-      testManager.tell(new TestManager.NodeActionResponse("join", nodeId, true), getSelf());
+      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
       logger.log("JOIN completed (maintenance done) and serving.");
     } else if (mode == Mode.RECOVERING) {
-      testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, true), getSelf());
+      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
@@ -531,13 +538,13 @@ public class Node extends AbstractActor {
    */
   private void onReadRequest(ReadRequest msg) {
     if (!serving) {
-      getSender().tell(new OperationFailed(msg.key, "Node not serving yet"), getSelf());
+      sendWithRandomDelay(getSender(), new OperationFailed(msg.key, "Node not serving yet"));
       return;
     }
     logger.log("Received ReadRequest for key=" + msg.key);
 
     if (writeLocks.containsKey(msg.key)) {
-      getSender().tell(new OperationFailed(msg.key, "Another write in progress for this key"), getSelf());
+      sendWithRandomDelay(getSender(), new OperationFailed(msg.key, "Another write in progress for this key"));
       logger.log("Rejected ReadRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
@@ -547,7 +554,7 @@ public class Node extends AbstractActor {
     for (ActorRef node : responsibleNodes) {
       logger.log("Notifying node " + nodeIdMap.get(node) + " for ReadRequest: key=" + msg.key + " client="
           + getSender().path().name());
-      node.tell(new GetVersionRead(msg.key, getSelf(), getSender()), getSelf());
+      sendWithRandomDelay(node, new GetVersionRead(msg.key, getSelf(), getSender()));
     }
 
     // Initialize coordinator state + start timeout
@@ -562,14 +569,14 @@ public class Node extends AbstractActor {
    */
   private void onWriteRequest(WriteRequest msg) {
     if (!serving) {
-      getSender().tell(new OperationFailed(msg.key, msg.value, "Node not serving yet"), getSelf());
+      sendWithRandomDelay(getSender(), new OperationFailed(msg.key, msg.value, "Node not serving yet"));
       return;
     }
     logger.log("Received WriteRequest for key=" + msg.key + " value=\"" + msg.value + "\"");
 
     // Check if some node is already coordinating a write for this key
     if (writeLocks.containsKey(msg.key)) {
-      getSender().tell(new OperationFailed(msg.key, msg.value, "Another write in progress for this key"), getSelf());
+      sendWithRandomDelay(getSender(), new OperationFailed(msg.key, msg.value, "Another write in progress for this key"));
       logger.log("Rejected WriteRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
@@ -579,7 +586,7 @@ public class Node extends AbstractActor {
     for (ActorRef node : responsibleNodes) {
       logger.log("Notifying node " + nodeIdMap.get(node) + " for WriteRequest: key=" + msg.key + " value=\"" + msg.value
           + "\"");
-      node.tell(new GetVersionWrite(msg.key, getSelf()), getSelf());
+      sendWithRandomDelay(node, new GetVersionWrite(msg.key, getSelf()));
     }
 
     // Initialize coordinator state + start timeout
@@ -592,7 +599,7 @@ public class Node extends AbstractActor {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
       logger.log("Rejected GetVersionRead for key=" + msg.key + " due to ongoing write");
-      msg.coordinator.tell(new VersionReadResponse(msg.key, -1, "", msg.requester), getSelf());
+      sendWithRandomDelay(msg.coordinator, new VersionReadResponse(msg.key, -1, "", msg.requester));
       return;
     }
 
@@ -604,7 +611,7 @@ public class Node extends AbstractActor {
       value = item.value;
     }
     logger.log("Replied GetVersionRead for key=" + msg.key + " v=" + version);
-    msg.coordinator.tell(new VersionReadResponse(msg.key, version, value, msg.requester), getSelf());
+    sendWithRandomDelay(msg.coordinator, new VersionReadResponse(msg.key, version, value, msg.requester));
   }
 
   private void onVersionReadResponse(VersionReadResponse msg) {
@@ -650,8 +657,8 @@ public class Node extends AbstractActor {
       // Respond to client if this is an external read
       if (mode == Mode.IDLE && state.client != getSelf()) {
         logger.log("(Read) Returning value v=" + maxVersionResponse.version + " to client");
-        state.client.tell(new Client.ReadResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version),
-            getSelf());
+        sendWithRandomDelay(state.client,
+            new Client.ReadResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version));
       }
 
       // Cleanup state and timeout
@@ -675,7 +682,7 @@ public class Node extends AbstractActor {
   private void onGetVersionWrite(GetVersionWrite msg) {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
-      msg.requester.tell(new VersionWriteResponse(msg.key, -1, ""), getSelf());
+      sendWithRandomDelay(msg.requester, new VersionWriteResponse(msg.key, -1, ""));
       return;
     }
     writeLocks.put(msg.key, getSender());
@@ -687,7 +694,7 @@ public class Node extends AbstractActor {
       version = item.version;
       value = item.value;
     }
-    msg.requester.tell(new VersionWriteResponse(msg.key, version, value), getSelf());
+    sendWithRandomDelay(msg.requester, new VersionWriteResponse(msg.key, version, value));
   }
 
   private void onVersionWriteResponse(VersionWriteResponse msg) {
@@ -725,9 +732,9 @@ public class Node extends AbstractActor {
 
       // Send UpdateValue to replicas and reply to client
       for (ActorRef node : state.responsibleNodes) {
-        node.tell(new UpdateValue(state.key, state.newVersion, state.newValue), getSelf());
+        sendWithRandomDelay(node, new UpdateValue(state.key, state.newVersion, state.newValue));
       }
-      state.client.tell(new Client.WriteResponse(state.key, state.newValue, state.newVersion), getSelf());
+      sendWithRandomDelay(state.client, new Client.WriteResponse(state.key, state.newValue, state.newVersion));
 
       // Cleanup state, timeout and lock
       if (state.timeout != null && !state.timeout.isCancelled()) {
@@ -778,10 +785,10 @@ public class Node extends AbstractActor {
       logger.log("WriteTimeout for key " + state.key + ": quorum not reached");
       for (ActorRef node : state.responsibleNodes) {
         if (node != getSelf()) {
-          node.tell(new OperationFailed(state.key, state.newValue, "Write quorum not reached"), getSelf());
+          sendWithRandomDelay(node, new OperationFailed(state.key, state.newValue, "Write quorum not reached"));
         }
       }
-      state.client.tell(new OperationFailed(state.key, state.newValue, "Write quorum not reached"), getSelf());
+      sendWithRandomDelay(state.client, new OperationFailed(state.key, state.newValue, "Write quorum not reached"));
     }
   }
 
@@ -801,7 +808,7 @@ public class Node extends AbstractActor {
     }
     if (state.versionReplies.size() < R) {
       logger.log("ReadTimeout for key " + state.key + ": quorum not reached");
-      state.client.tell(new OperationFailed(state.key, "Read quorum not reached"), getSelf());
+      sendWithRandomDelay(state.client, new OperationFailed(state.key, "Read quorum not reached"));
     }
   }
 
@@ -811,7 +818,7 @@ public class Node extends AbstractActor {
       return; // Already joined or not joining
     }
     logger.logError("JoinTimeout: bootstrap did not respond in time");
-    testManager.tell(new TestManager.NodeActionResponse("join", nodeId, false), getSelf());
+    sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, false));
     getContext().stop(getSelf());
   }
 
@@ -821,7 +828,7 @@ public class Node extends AbstractActor {
       return; // Already recovered or not recovering
     }
     logger.logError("RecoverTimeout: bootstrap did not respond in time");
-    testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, false), getSelf());
+    sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, false));
     mode = Mode.CRASHED;
     getContext().become(crashedReceive());
   }
@@ -853,16 +860,16 @@ public class Node extends AbstractActor {
         List<ActorRef> responsible = getResponsibleNodes(key, tempNodes, tempNodeIdMap);
 
         for (ActorRef target : responsible) {
-          target.tell(new TransferData(key, di.version, di.value), getSelf());
+          sendWithRandomDelay(target, new TransferData(key, di.version, di.value));
         }
       }
 
       // Announce leave to other nodes
       for (ActorRef p : tempNodes) {
-        p.tell(new AnnounceLeave(getSelf(), nodeId), getSelf());
+        sendWithRandomDelay(p, new AnnounceLeave(getSelf(), nodeId));
       }
 
-      testManager.tell(new TestManager.NodeActionResponse("leave", nodeId, true), getSelf());
+      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("leave", nodeId, true));
       getContext().stop(getSelf()); // stop the actor
     }
 
@@ -875,7 +882,7 @@ public class Node extends AbstractActor {
       this.serving = false;
       getContext().become(crashedReceive());
       logger.log("Crashing node");
-      testManager.tell(new TestManager.NodeActionResponse("crash", nodeId, true), getSelf());
+      sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("crash", nodeId, true));
     }
 
     else if (msg.action.equals("recover")) {
@@ -887,7 +894,7 @@ public class Node extends AbstractActor {
       this.mode = Mode.RECOVERING;
       this.serving = false;
       getContext().become(joiningRecoveringReceive());
-      msg.bootstrap.tell(new GetPeers(), getSelf());
+      sendWithRandomDelay(msg.bootstrap, new GetPeers());
 
       // Schedule a timeout in case bootstrap doesn't respond
       getContext().system().scheduler().scheduleOnce(
@@ -906,7 +913,7 @@ public class Node extends AbstractActor {
   /** Returns the current membership view to the requester (bootstrap helper). */
   private void onGetPeers(GetPeers msg) {
     // Answer with current nodes and their IDs
-    getSender().tell(new PeerResponse(new ArrayList<>(nodes), new HashMap<>(nodeIdMap)), getSelf());
+    sendWithRandomDelay(getSender(), new PeerResponse(new ArrayList<>(nodes), new HashMap<>(nodeIdMap)));
   }
 
   /**
@@ -924,7 +931,7 @@ public class Node extends AbstractActor {
 
       if (successor != null) {
         logger.log("JOIN: requesting items from " + nodeIdMap.get(successor));
-        successor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
+        sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId));
       } else {
         logger.logError(
             "JOIN: due specifics of the project, the network has always an active node. Here, no successor has been found => ERROR.");
@@ -941,10 +948,10 @@ public class Node extends AbstractActor {
 
       // send recovery requests
       logger.log("RECOVER: requesting items from successor " + nodeIdMap.get(successor));
-      successor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
+      sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId));
 
       logger.log("RECOVER: requesting items from predecessor " + nodeIdMap.get(predecessor));
-      predecessor.tell(new ItemRequest(getSelf(), nodeId), getSelf());
+      sendWithRandomDelay(predecessor, new ItemRequest(getSelf(), nodeId));
     }
 
     else {
@@ -969,7 +976,7 @@ public class Node extends AbstractActor {
     }
 
     logger.log(mode + ": sending " + batch.size() + " items to " + nodeIdMap.get(msg.targetNode));
-    msg.targetNode.tell(new DataItemsBatch(batch), getSelf());
+    sendWithRandomDelay(msg.targetNode, new DataItemsBatch(batch));
   }
 
   /**
@@ -1077,7 +1084,18 @@ public class Node extends AbstractActor {
   }
 
   private void onPrintStore(PrintStore msg) {
-    getSender().tell(new TestManager.PrintStoreResponse(nodeId, new LinkedHashMap<>(store)), getSelf());
+    sendWithRandomDelay(getSender(), new TestManager.PrintStoreResponse(nodeId, new LinkedHashMap<>(store)));
+  }
+
+  private void sendWithRandomDelay(ActorRef target, Object message) {
+    long delay = ThreadLocalRandom.current()
+        .nextLong(MIN_PROP_DELAY_MS, MAX_PROP_DELAY_MS + 1);
+    getContext().system().scheduler().scheduleOnce(
+        Duration.create(delay, TimeUnit.MILLISECONDS),
+        target,
+        message,
+        getContext().dispatcher(),
+        getSelf());
   }
 
   // =====================
@@ -1147,4 +1165,6 @@ public class Node extends AbstractActor {
   public Receive createReceive() {
     return activeReceive();
   }
+
+  
 }
