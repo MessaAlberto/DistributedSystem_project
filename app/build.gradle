@@ -4,16 +4,13 @@ plugins {
 }
 
 repositories {
-    // Use Maven Central for resolving dependencies.
+    // Use Maven Central (and local cache) for resolving dependencies.
     mavenCentral()
     mavenLocal()
-    maven {
-        url "https://repo.akka.io/maven"
-    }
 }
 
 def scalaVersion = "2.13"
-def akkaVersion = "2.9.0"
+def akkaVersion = "2.8.5"
 def logbackVersion = "1.2.3"
 def junitVersion = "4.13.1"
 

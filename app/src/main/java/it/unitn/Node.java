@@ -44,6 +44,7 @@ public class Node extends AbstractActor {
   private final int timeoutSeconds;
   private Cancellable joinTimeout; // TODO
   private Cancellable recoverTimeout;
+  private final Map<String, String> pendingDataTransferDescriptions = new LinkedHashMap<>();
 
   //dealy parameters
 
@@ -104,13 +105,7 @@ public class Node extends AbstractActor {
       // Ask to bootstrap for current peers
       sendWithRandomDelay(bootstrap, new GetPeers());
 
-      // Schedule a timeout in case bootstrap doesn't respond
-      joinTimeout = getContext().system().scheduler().scheduleOnce(
-          Duration.create(timeoutSeconds, TimeUnit.SECONDS),
-          getSelf(),
-          new JoinTimeout(),
-          getContext().system().dispatcher(),
-          getSelf());
+      scheduleMembershipTimeout("waiting bootstrap peer response for JOIN");
     }
   }
 
@@ -134,17 +129,19 @@ public class Node extends AbstractActor {
     public final List<ActorRef> responsibleNodes;
     public final Map<ActorRef, VersionResponse> versionReplies = new HashMap<>();
     public Cancellable timeout;
+    public final String timeoutDetail;
 
     public WriteRequestState(int key, String newValue, ActorRef client, List<ActorRef> responsibleNodes) {
       this.key = key;
       this.newValue = newValue;
       this.client = client;
       this.responsibleNodes = responsibleNodes;
+      this.timeoutDetail = buildWriteTimeoutDetail(key, client);
 
       this.timeout = context().system().scheduler().scheduleOnce(
           Duration.create(timeoutSeconds, TimeUnit.SECONDS),
           getSelf(),
-          new WriteTimeout(key),
+          new WriteTimeout(key, timeoutDetail),
           context().dispatcher(),
           ActorRef.noSender());
     }
@@ -156,15 +153,17 @@ public class Node extends AbstractActor {
     public final ActorRef client;
     public final Map<ActorRef, VersionResponse> versionReplies = new HashMap<>();
     public final Cancellable timeout;
+    public final String timeoutDetail;
 
     public ReadRequestState(int key, ActorRef client) {
       this.key = key;
       this.client = client;
+      this.timeoutDetail = buildReadTimeoutDetail(key, client);
 
       this.timeout = context().system().scheduler().scheduleOnce(
           Duration.create(timeoutSeconds, TimeUnit.SECONDS),
           getSelf(),
-          new ReadTimeout(key, client),
+          new ReadTimeout(key, client, timeoutDetail),
           context().dispatcher(),
           ActorRef.noSender());
     }
@@ -235,6 +234,117 @@ public class Node extends AbstractActor {
     }
   }
 
+  private List<ActorRef> peersExcludingSelf() {
+    List<ActorRef> peers = new ArrayList<>();
+    for (ActorRef node : nodes) {
+      if (node != getSelf()) {
+        peers.add(node);
+      }
+    }
+    return peers;
+  }
+
+  private String describeRequester(ActorRef requester) {
+    if (requester == null) {
+      return "unknown";
+    }
+    if (requester == getSelf()) {
+      return "maintenance";
+    }
+    return requester.path().name();
+  }
+
+  private String buildReadTimeoutDetail(int key, ActorRef requester) {
+    return "Read quorum R=" + R + " not reached for key " + key + " (requester=" + describeRequester(requester) + ")";
+  }
+
+  private String buildWriteTimeoutDetail(int key, ActorRef client) {
+    return "Write quorum W=" + W + " not reached for key " + key + " (client=" + describeRequester(client) + ")";
+  }
+
+  // === Helpers per gestione timeout JOIN/RECOVER ===
+
+  private void registerPendingTransfer(String context, String description) {
+    if (context != null && description != null) {
+      pendingDataTransferDescriptions.put(context, description);
+    }
+  }
+
+  private void clearPendingTransfers() {
+    pendingDataTransferDescriptions.clear();
+  }
+
+  private String describePendingTransfers() {
+    return pendingDataTransferDescriptions.values().stream()
+        .reduce((a, b) -> a + ", " + b)
+        .orElse("unknown peer");
+  }
+
+  private String newTransferContext(String prefix) {
+    return prefix + "-" + System.nanoTime();
+  }
+
+  private void scheduleMembershipTimeout(String detail) {
+    if (mode != Mode.JOINING && mode != Mode.RECOVERING) {
+      return;
+    }
+    cancelMembershipTimeout();
+
+    if (mode == Mode.JOINING) {
+      joinTimeout = getContext().system().scheduler().scheduleOnce(
+          Duration.create(timeoutSeconds, TimeUnit.SECONDS),
+          getSelf(),
+          new JoinTimeout(detail),
+          getContext().system().dispatcher(),
+          getSelf());
+    } else if (mode == Mode.RECOVERING) {
+      recoverTimeout = getContext().system().scheduler().scheduleOnce(
+          Duration.create(timeoutSeconds, TimeUnit.SECONDS),
+          getSelf(),
+          new RecoverTimeout(detail),
+          getContext().system().dispatcher(),
+          getSelf());
+    }
+    if (detail != null) {
+      logger.log("Timeout armed for " + mode + ": " + detail);
+    }
+  }
+
+  private void cancelMembershipTimeout() {
+    if (joinTimeout != null && !joinTimeout.isCancelled()) {
+      joinTimeout.cancel();
+    }
+    joinTimeout = null;
+
+    if (recoverTimeout != null && !recoverTimeout.isCancelled()) {
+      recoverTimeout.cancel();
+    }
+    recoverTimeout = null;
+  }
+
+  private void failMembershipAction(String detail) {
+    if (mode != Mode.JOINING && mode != Mode.RECOVERING) {
+      logger.logError("failMembershipAction called while mode=" + mode + ", reason=" + detail);
+      return;
+    }
+
+    String reason = (detail == null || detail.isEmpty()) ? "Unknown membership failure" : detail;
+    cancelMembershipTimeout();
+    clearPendingTransfers();
+
+    if (mode == Mode.JOINING) {
+      logger.logError("JOIN failed: " + reason);
+      testManager.tell(new TestManager.NodeActionResponse("join", nodeId, false, reason), getSelf());
+      getContext().stop(getSelf());
+    } else {
+      logger.logError("RECOVER failed: " + reason);
+      testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, false, reason), getSelf());
+      mode = Mode.CRASHED;
+      serving = false;
+      getContext().become(crashedReceive());
+    }
+  }
+
   // === Helpers per maintenance gating ===
 
   private void startMaintenanceReads(Set<Integer> keys) {
@@ -242,13 +352,16 @@ public class Node extends AbstractActor {
       completeMaintenanceIfDone();
       return;
     }
+    if (mode == Mode.JOINING || mode == Mode.RECOVERING) {
+      scheduleMembershipTimeout("waiting maintenance reads quorum for " + keys.size() + " keys");
+    }
     // Update pending keys set and start reads
     for (Integer key : keys) {
       ReadRequestState state = new ReadRequestState(key, getSelf());
       readRequestList.put(key + " " + getSelf().path().name(), state);
 
       for (ActorRef node : getResponsibleNodes(key, nodes, nodeIdMap)) {
-        sendWithRandomDelay(node, new GetVersionRead(key, getSelf(), null));
+        sendWithRandomDelay(node, new GetVersionRead(key, getSelf(), getSelf()));
       }
     }
   }
@@ -276,14 +389,18 @@ public class Node extends AbstractActor {
           sendWithRandomDelay(p, new AnnounceJoin(getSelf(), nodeId));
         }
       }
-      testManager.tell(new TestManager.NodeActionResponse("join", nodeId, true), getSelf());
+      cancelMembershipTimeout();
+      clearPendingTransfers();
+      testManager.tell(new TestManager.NodeActionResponse("join", nodeId, true, "Maintenance completed"), getSelf());
       //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
       logger.log("JOIN completed (maintenance done) and serving.");
     } else if (mode == Mode.RECOVERING) {
-      testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, true), getSelf());
+      cancelMembershipTimeout();
+      clearPendingTransfers();
+      testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, true, "Maintenance completed"), getSelf());
       //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
@@ -401,26 +518,40 @@ public class Node extends AbstractActor {
   // Timeout messages for write and read operations
   public static class WriteTimeout implements Serializable {
     public final int key;
+    public final String detail;
 
-    public WriteTimeout(int key) {
+    public WriteTimeout(int key, String detail) {
       this.key = key;
+      this.detail = detail;
     }
   }
 
   public static class ReadTimeout implements Serializable {
     public final int key;
     public final ActorRef requester;
+    public final String detail;
 
-    public ReadTimeout(int key, ActorRef requester) {
+    public ReadTimeout(int key, ActorRef requester, String detail) {
       this.key = key;
       this.requester = requester;
+      this.detail = detail;
     }
   }
 
   public static class JoinTimeout implements Serializable {
+    public final String detail;
+
+    public JoinTimeout(String detail) {
+      this.detail = detail;
+    }
   }
 
   public static class RecoverTimeout implements Serializable {
+    public final String detail;
+
+    public RecoverTimeout(String detail) {
+      this.detail = detail;
+    }
   }
 
   // Failure message to send to client on timeout
@@ -475,18 +606,22 @@ public class Node extends AbstractActor {
   public static class ItemRequest implements Serializable {
     public final ActorRef targetNode;
     public final int targetNodeId;
+    public final String context;
 
-    public ItemRequest(ActorRef targetNode, int targetNodeId) {
+    public ItemRequest(ActorRef targetNode, int targetNodeId, String context) {
       this.targetNode = targetNode;
       this.targetNodeId = targetNodeId;
+      this.context = context;
     }
   }
 
   public static class DataItemsBatch implements Serializable {
     public final Map<Integer, DataItem> items;
+    public final String context;
 
-    public DataItemsBatch(Map<Integer, DataItem> items) {
+    public DataItemsBatch(Map<Integer, DataItem> items, String context) {
       this.items = items;
+      this.context = context;
     }
   }
 
@@ -784,13 +919,14 @@ public class Node extends AbstractActor {
       state.timeout.cancel();
     }
     if (state.versionReplies.size() < W) {
-      logger.log("WriteTimeout for key " + state.key + ": quorum not reached");
+      String detail = msg.detail != null ? msg.detail : "Write quorum not reached";
+      logger.log("WriteTimeout: " + detail);
       for (ActorRef node : state.responsibleNodes) {
         if (node != getSelf()) {
-          sendWithRandomDelay(node, new OperationFailed(state.key, state.newValue, "Write quorum not reached"));
+          sendWithRandomDelay(node, new OperationFailed(state.key, state.newValue, detail));
         }
       }
-      sendWithRandomDelay(state.client, new OperationFailed(state.key, state.newValue, "Write quorum not reached"));
+      sendWithRandomDelay(state.client, new OperationFailed(state.key, state.newValue, detail));
     }
   }
 
@@ -809,8 +945,14 @@ public class Node extends AbstractActor {
       state.timeout.cancel();
     }
     if (state.versionReplies.size() < R) {
-      logger.log("ReadTimeout for key " + state.key + ": quorum not reached");
-      sendWithRandomDelay(state.client, new OperationFailed(state.key, "Read quorum not reached"));
+      String detail = msg.detail != null ? msg.detail : "Read quorum not reached";
+      logger.log("ReadTimeout: " + detail);
+      boolean maintenanceRead = state.client == getSelf();
+      if (maintenanceRead && (mode == Mode.JOINING || mode == Mode.RECOVERING)) {
+        failMembershipAction(detail);
+      } else {
+        sendWithRandomDelay(state.client, new OperationFailed(state.key, detail));
+      }
     }
   }
 
@@ -819,10 +961,8 @@ public class Node extends AbstractActor {
       logger.logError("JoinTimeout: not in JOINING mode");
       return; // Already joined or not joining
     }
-    logger.logError("JoinTimeout: bootstrap did not respond in time");
-    testManager.tell(new TestManager.NodeActionResponse("join", nodeId, false), getSelf());
-    //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, false));
-    getContext().stop(getSelf());
+    String reason = (msg.detail == null || msg.detail.isEmpty()) ? "Join timeout" : msg.detail;
+    failMembershipAction(reason);
   }
 
   private void onRecoverTimeout(RecoverTimeout msg) {
@@ -830,11 +970,8 @@ public class Node extends AbstractActor {
       logger.logError("RecoverTimeout: not in RECOVERING mode");
       return; // Already recovered or not recovering
     }
-    logger.logError("RecoverTimeout: bootstrap did not respond in time");
-    testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, false), getSelf());
-    //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, false));
-    mode = Mode.CRASHED;
-    getContext().become(crashedReceive());
+    String reason = (msg.detail == null || msg.detail.isEmpty()) ? "Recover timeout" : msg.detail;
+    failMembershipAction(reason);
   }
 
   // =====================
@@ -899,15 +1036,10 @@ public class Node extends AbstractActor {
       this.mode = Mode.RECOVERING;
       this.serving = false;
       getContext().become(joiningRecoveringReceive());
+      clearPendingTransfers();
       sendWithRandomDelay(msg.bootstrap, new GetPeers());
 
-      // Schedule a timeout in case bootstrap doesn't respond
-      getContext().system().scheduler().scheduleOnce(
-          Duration.create(timeoutSeconds, TimeUnit.SECONDS),
-          getSelf(),
-          new RecoverTimeout(),
-          getContext().system().dispatcher(),
-          getSelf());
+      scheduleMembershipTimeout("waiting bootstrap peer response for RECOVER");
     }
 
     else {
@@ -931,32 +1063,61 @@ public class Node extends AbstractActor {
     nodes.addAll(msg.nodes);
     nodeIdMap.putAll(msg.nodeIds);
 
+    List<ActorRef> peersWithoutSelf = peersExcludingSelf();
+
     if (mode == Mode.JOINING) {
-      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, nodes, nodeIdMap);
+      if (peersWithoutSelf.isEmpty()) {
+        failMembershipAction("No peers available for JOIN");
+        return;
+      }
+
+      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, peersWithoutSelf, nodeIdMap);
 
       if (successor != null) {
         logger.log("JOIN: requesting items from " + nodeIdMap.get(successor));
-        sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId));
+        clearPendingTransfers();
+        String ctx = newTransferContext("join-successor-" + nodeIdMap.get(successor));
+        registerPendingTransfer(ctx, "successor " + nodeIdMap.get(successor));
+        sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId, ctx));
+        scheduleMembershipTimeout("waiting data transfer from " + describePendingTransfers());
       } else {
-        logger.logError(
-            "JOIN: due specifics of the project, the network has always an active node. Here, no successor has been found => ERROR.");
+        failMembershipAction("No successor available for JOIN");
         return;
       }
     }
 
     else if (mode == Mode.RECOVERING) {
       receivedResponseForRecovery = 0;
+      clearPendingTransfers();
+
+      if (peersWithoutSelf.isEmpty()) {
+        failMembershipAction("No peers available for RECOVER");
+        return;
+      }
 
       // pick immediate successor and predecessor
-      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, nodes, nodeIdMap);
-      ActorRef predecessor = RingUtils.findPredecessorOfId(nodeId, nodes, nodeIdMap);
+      ActorRef successor = RingUtils.findSuccessorOfId(nodeId, peersWithoutSelf, nodeIdMap);
+      ActorRef predecessor = RingUtils.findPredecessorOfId(nodeId, peersWithoutSelf, nodeIdMap);
 
       // send recovery requests
-      logger.log("RECOVER: requesting items from successor " + nodeIdMap.get(successor));
-      sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId));
+      if (successor != null && predecessor != null) {
+        logger.log("RECOVER: requesting items from successor " + nodeIdMap.get(successor));
+        String successorCtx = newTransferContext("recover-successor-" + nodeIdMap.get(successor));
+        registerPendingTransfer(successorCtx, "successor " + nodeIdMap.get(successor));
+        sendWithRandomDelay(successor, new ItemRequest(getSelf(), nodeId, successorCtx));
 
-      logger.log("RECOVER: requesting items from predecessor " + nodeIdMap.get(predecessor));
-      sendWithRandomDelay(predecessor, new ItemRequest(getSelf(), nodeId));
+        logger.log("RECOVER: requesting items from predecessor " + nodeIdMap.get(predecessor));
+        String predecessorCtx = newTransferContext("recover-predecessor-" + nodeIdMap.get(predecessor));
+        registerPendingTransfer(predecessorCtx, "predecessor " + nodeIdMap.get(predecessor));
+        sendWithRandomDelay(predecessor, new ItemRequest(getSelf(), nodeId, predecessorCtx));
+      } else {
+        failMembershipAction("Missing neighbor for RECOVER (successor/predecessor)");
+        return;
+      }
+
+      if (!pendingDataTransferDescriptions.isEmpty()) {
+        scheduleMembershipTimeout("waiting data transfer from " + describePendingTransfers());
+      }
     }
 
     else {
@@ -981,7 +1142,7 @@ public class Node extends AbstractActor {
     }
 
     logger.log(mode + ": sending " + batch.size() + " items to " + nodeIdMap.get(msg.targetNode));
-    sendWithRandomDelay(msg.targetNode, new DataItemsBatch(batch));
+    sendWithRandomDelay(msg.targetNode, new DataItemsBatch(batch, msg.context));
   }
 
   /**
@@ -989,6 +1150,16 @@ public class Node extends AbstractActor {
    * maintenance) or generic transfer.
    */
   private void onDataItemsBatch(DataItemsBatch msg) {
+    if ((mode == Mode.JOINING || mode == Mode.RECOVERING) && msg.context != null) {
+      if (pendingDataTransferDescriptions.remove(msg.context) != null) {
+        if (!pendingDataTransferDescriptions.isEmpty()) {
+          scheduleMembershipTimeout("waiting data transfer from " + describePendingTransfers());
+        } else {
+          cancelMembershipTimeout();
+        }
+      }
+    }
+
     // TODO: this message is used in JOIN and RECOVER operations, if the requesting
     // nodes reach this message means that bootstrap and the successor/predecessor
     // are alive and not crashed. So, the timeout can be cancelled.
@@ -1143,6 +1314,7 @@ public class Node extends AbstractActor {
   private Receive joiningRecoveringReceive() {
     return receiveBuilder()
         .match(JoinTimeout.class, this::onJoinTimeout)
+        .match(RecoverTimeout.class, this::onRecoverTimeout)
 
         .match(PeerResponse.class, this::onPeerResponse)
         .match(DataItemsBatch.class, this::onDataItemsBatch)

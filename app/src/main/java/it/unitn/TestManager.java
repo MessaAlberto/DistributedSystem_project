@@ -148,11 +148,17 @@ public class TestManager extends AbstractActor {
     public final String action; // "join", "leave", "crash", "recover"
     public final int nodeId;
     public final boolean result;
+    public final String detail;
 
     public NodeActionResponse(String action, int nodeId, boolean result) {
+      this(action, nodeId, result, null);
+    }
+
+    public NodeActionResponse(String action, int nodeId, boolean result, String detail) {
       this.action = action;
       this.nodeId = nodeId;
       this.result = result;
+      this.detail = detail;
     }
   }
 
@@ -216,47 +222,48 @@ public class TestManager extends AbstractActor {
   }
 
   private void onNodeActionResponse(NodeActionResponse msg) {
+    ActorRef nodeRef = getSender();
     if (msg.result) {
       if (msg.action.equals("join")) {
-        if (nodeIdMap.containsKey(getSender())) {
-          logger.logError("Node already in the system after join: " + getSender().path().name());
+        if (nodeIdMap.containsKey(nodeRef)) {
+          logger.logError("Node already in the system after join: " + nodeRef.path().name());
           return;
         }
-        nodeIdMap.put(getSelf(), msg.nodeId);
-        activeNodes.add(getSender());
         logger.log("JOIN completed: Node " + msg.nodeId + " joined the system");
       } else if (msg.action.equals("leave")) {
-        if (!nodeIdMap.containsKey(getSender())) {
-          logger.logError("Node not found in the system after leave: " + getSender().path().name());
+        if (!nodeIdMap.containsKey(nodeRef)) {
+          logger.logError("Node not found in the system after leave: " + nodeRef.path().name());
           return;
         }
-        activeNodes.remove(getSender());
-        nodeIdMap.remove(getSender());
         logger.log("LEAVE completed: Node " + msg.nodeId + " left the system");
       } else if (msg.action.equals("crash")) {
-        if (!nodeIdMap.containsKey(getSender())) {
-          logger.logError("Node not found in the system after crash: " + getSender().path().name());
+        if (!nodeIdMap.containsKey(nodeRef)) {
+          logger.logError("Node not found in the system after crash: " + nodeRef.path().name());
           return;
         }
-        activeNodes.remove(getSender());
-        crashedNodes.add(getSender());
         logger.log("CRASH completed: Node " + msg.nodeId + " crashed");
       } else if (msg.action.equals("recover")) {
-        if (!nodeIdMap.containsKey(getSender())) {
-          logger.logError("Node not found in the system after recover: " + getSender().path().name());
+        if (!nodeIdMap.containsKey(nodeRef)) {
+          logger.logError("Node not found in the system after recover: " + nodeRef.path().name());
           return;
         }
-        crashedNodes.remove(getSender());
-        activeNodes.add(getSender());
         logger.log("RECOVER completed: Node " + msg.nodeId + " recovered");
       } else {
         logger.logError("Unknown action in NodeActionResponse: " + msg.action);
         return;
       }
 
-      updateNodeStateAndClients(msg.action, getSender(), msg.nodeId);
+      if (msg.detail != null && !msg.detail.isEmpty()) {
+        logger.log("Action detail: " + msg.detail);
+      }
+
+      updateNodeStateAndClients(msg.action, nodeRef, msg.nodeId);
     } else {
-      logger.logError("Node action failed: " + msg.action + " for Node " + msg.nodeId);
+      if (msg.detail != null && !msg.detail.isEmpty()) {
+        logger.logError("Node action failed: " + msg.action + " for Node " + msg.nodeId + " -> " + msg.detail);
+      } else {
+        logger.logError("Node action failed: " + msg.action + " for Node " + msg.nodeId);
+      }
     }
     isViewChangedStable = true;
 
@@ -422,7 +429,9 @@ public class TestManager extends AbstractActor {
   private void updateNodeStateAndClients(String action, ActorRef node, Integer nodeId) {
     switch (action.toLowerCase()) {
       case "join":
-        activeNodes.add(node);
+        if (!activeNodes.contains(node)) {
+          activeNodes.add(node);
+        }
         nodeIdMap.put(node, nodeId);
         break;
       case "leave":
@@ -431,11 +440,15 @@ public class TestManager extends AbstractActor {
         break;
       case "crash":
         activeNodes.remove(node);
-        crashedNodes.add(node);
+        if (!crashedNodes.contains(node)) {
+          crashedNodes.add(node);
+        }
         break;
       case "recover":
         crashedNodes.remove(node);
-        activeNodes.add(node);
+        if (!activeNodes.contains(node)) {
+          activeNodes.add(node);
+        }
         break;
       default:
         throw new IllegalArgumentException("Unknown action: " + action);

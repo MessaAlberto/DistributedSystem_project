@@ -13,3 +13,5 @@ RECOVER possibili timeout:
 
 
 Possibilmente fare in modo che in caso di timeout, il nodo riferisca in che punto dell'operazione si è bloccato. Così il testManager può printare un messaggio più preciso (aiuta a capire se in certi scenari, i test falliscono come noi ci aspettavamo)
+
+- [] use uint
