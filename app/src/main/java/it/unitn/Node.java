@@ -189,15 +189,13 @@ public class Node extends AbstractActor {
    */
   private List<ActorRef> getResponsibleNodes(int key, List<ActorRef> nodes, Map<ActorRef, Integer> nodeIdMap) {
     List<ActorRef> sortedPeers = new ArrayList<>(nodes);
-    Collections.sort(sortedPeers, Comparator.comparingInt(a -> nodeIdMap.get(a)));
+    Collections.sort(sortedPeers, (a, b) -> Integer.compareUnsigned(nodeIdMap.get(a), nodeIdMap.get(b)));
 
-    long unsignedKey = key & 0xFFFFFFFFL;
     int startIndex = 0;
     boolean found = false;
 
     for (int i = 0; i < sortedPeers.size(); i++) {
-      long nodeKey = nodeIdMap.get(sortedPeers.get(i)) & 0xFFFFFFFFL;
-      if (nodeKey >= unsignedKey) {
+      if (Integer.compareUnsigned(nodeIdMap.get(sortedPeers.get(i)), key) >= 0) {
         startIndex = i;
         found = true;
         break;

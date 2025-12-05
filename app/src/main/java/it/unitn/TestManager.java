@@ -2,7 +2,6 @@ package it.unitn;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -377,10 +376,10 @@ public class TestManager extends AbstractActor {
      */
     public static ActorRef findSuccessorOfId(int id, List<ActorRef> list, Map<ActorRef, Integer> map) {
       List<ActorRef> sorted = new ArrayList<>(list);
-      sorted.sort(Comparator.comparingInt(map::get));
+      sorted.sort((a, b) -> Integer.compareUnsigned(map.get(a), map.get(b)));
 
       for (ActorRef p : sorted) {
-        if (map.get(p) >= id)
+        if (Integer.compareUnsigned(map.get(p), id) >= 0)
           return p;
       }
       return sorted.isEmpty() ? null : sorted.get(0);
@@ -392,15 +391,20 @@ public class TestManager extends AbstractActor {
      */
     public static ActorRef findPredecessorOfId(int id, List<ActorRef> list, Map<ActorRef, Integer> map) {
       List<ActorRef> sorted = new ArrayList<>(list);
-      sorted.sort(Comparator.comparingInt(map::get));
+      sorted.sort((a, b) -> Integer.compareUnsigned(map.get(a), map.get(b)));
 
       ActorRef pred = null;
       int predId = Integer.MIN_VALUE;
+      boolean first = true;
+
       for (ActorRef p : sorted) {
         int pid = map.get(p);
-        if (pid < id && pid > predId) {
-          predId = pid;
-          pred = p;
+        if (Integer.compareUnsigned(pid, id) < 0) {
+          if (first || Integer.compareUnsigned(pid, predId) > 0) {
+            first = false;
+            predId = pid;
+            pred = p;
+          }
         }
       }
       if (pred != null)
@@ -504,7 +508,7 @@ public class TestManager extends AbstractActor {
 
     switch (act) {
       case "join":
-        targetId = (nodeId != null) ? nodeId : nodeIdMap.values().stream().max(Integer::compare).orElse(0) + 10;
+        targetId = (nodeId != null) ? nodeId : nodeIdMap.values().stream().max(Integer::compareUnsigned).orElse(0) + 10;
         if (nodeIdMap.containsValue(targetId)) {
           logger.logError("Node ID " + targetId + " already exists.");
           return;
