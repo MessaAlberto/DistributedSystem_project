@@ -110,16 +110,22 @@ public class TestManager extends AbstractActor {
 
   public static class ClientRequest implements Serializable {
     public final int clientIndex; // index in clients list
+    public final int nodeId;
     public final int key;
     public final String value; // null for READ, non-null for WRITE
     public CountDownLatch latch = null; // optional latch to signal batch completion
 
     public ClientRequest(int clientIndex, int key, String value) {
-      this(clientIndex, key, value, null);
+      this(clientIndex, -1, key, value, null);
     }
 
     public ClientRequest(int clientIndex, int key, String value, CountDownLatch latch) {
+      this(clientIndex, -1, key, value, latch);
+    }
+
+    public ClientRequest(int clientIndex, int nodeId, int key, String value, CountDownLatch latch) {
       this.clientIndex = clientIndex;
+      this.nodeId = nodeId;
       this.key = key;
       this.value = value;
       this.latch = latch;
@@ -175,9 +181,6 @@ public class TestManager extends AbstractActor {
     }
   }
 
-  public static class LogSystemStatus implements Serializable {
-  }
-
   // =====================
   // Message Handlers
   // =====================
@@ -199,10 +202,28 @@ public class TestManager extends AbstractActor {
     activeClientRequests.computeIfAbsent(clientName, k -> new ArrayList<>())
         .add((msg.value == null ? "READ " : "WRITE ") + msg.key + (msg.value != null ? " " + msg.value : ""));
 
+    // ritorna actorRef in base all indice del nodo
+    ActorRef targetNode = null;
+    if (msg.nodeId != -1) {
+      for (Map.Entry<ActorRef, Integer> entry : nodeIdMap.entrySet()) {
+        if (entry.getValue().equals(msg.nodeId)) {
+          targetNode = entry.getKey();
+          break; // Trovato!
+        }
+      }
+      if (targetNode == null) {
+        logger.logError("Requested node ID " + msg.nodeId + " not found.");
+        if (msg.latch != null) {
+          msg.latch.countDown();
+        }
+        return;
+      }
+    }
+
     if (msg.value == null) {
-      clients.get(msg.clientIndex).tell(new Client.Read(msg.key), self());
+      clients.get(msg.clientIndex).tell(new Client.Read(targetNode, msg.key), self());
     } else {
-      clients.get(msg.clientIndex).tell(new Client.Write(msg.key, msg.value), self());
+      clients.get(msg.clientIndex).tell(new Client.Write(targetNode, msg.key, msg.value), self());
     }
   }
 
@@ -308,6 +329,7 @@ public class TestManager extends AbstractActor {
     printStore_counter = 0;
     allNodeStores.clear();
 
+    logger.log("\n");
     logger.log("=== PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===");
     for (ActorRef node : activeNodes) {
       node.tell(new Node.PrintStore(), self());
@@ -339,6 +361,8 @@ public class TestManager extends AbstractActor {
       }
       printStore_counter = 0;
       allNodeStores.clear();
+
+      logSystemStatus();
     }
   }
 
@@ -527,203 +551,6 @@ public class TestManager extends AbstractActor {
     }
   }
 
-  /**
-   * Interactive mode for manual testing
-   */
-  // private static void runInteractiveMode(
-  // ActorSystem system,
-  // ActorRef manager,
-  // Scanner scanner,
-  // int N, int R, int W,
-  // List<ActorRef> activeNodes,
-  // List<ActorRef> crashedNodes,
-  // Map<ActorRef, Integer> nodeIdMap,
-  // List<ActorRef> clients) throws InterruptedException {
-  // logger.log("\n=== INTERACTIVE MODE ===");
-  // logger.log("Commands:");
-  // logger.log(" put <key> <value> - Store a key-value pair");
-  // logger.log(" get <key> - Retrieve a value");
-  // logger.log(" join [nodeId] - Add a new node");
-  // logger.log(" leave [nodeId] - Remove a node");
-  // logger.log(" crash [nodeId] - Crash a node");
-  // logger.log(" recover [nodeId] - Recover a crashed node");
-  // logger.log(" client - Create a new client");
-  // logger.log(" status - Show system status");
-  // logger.log(" exit - Exit interactive mode");
-  // logger.log("");
-
-  // while (true) {
-  // System.out.print("mars> ");
-  // String input = scanner.nextLine().trim();
-
-  // if (input.isEmpty())
-  // continue;
-
-  // String[] parts = input.split("\\s+");
-  // String command = parts[0].toLowerCase();
-
-  // try {
-  // switch (command) {
-  // case "put":
-  // if (parts.length >= 3) {
-  // int key = Integer.parseInt(parts[1]);
-  // String value = String.join(" ", java.util.Arrays.copyOfRange(parts, 2,
-  // parts.length));
-  // clients.get(0).tell(new Client.Write(key, value), ActorRef.noSender());
-  // logger.log("Put request sent: key=" + key + ", value=\"" + value + "\"");
-  // } else {
-  // logger.log("Usage: put <key> <value>");
-  // }
-  // break;
-
-  // case "get":
-  // if (parts.length >= 2) {
-  // int key = Integer.parseInt(parts[1]);
-  // clients.get(0).tell(new Client.Read(key), ActorRef.noSender());
-  // logger.log("Read request sent: key=" + key);
-  // } else {
-  // logger.log("Usage: get <key>");
-  // }
-  // break;
-
-  // case "join":
-  // Integer nodeId = (parts.length >= 2) ? Integer.parseInt(parts[1]) : null;
-  // handleNodeAction(system, manager, activeNodes, crashedNodes, nodeIdMap,
-  // clients, "join", nodeId, N, R, W);
-  // logger.log("Join request sent");
-  // break;
-
-  // case "leave":
-  // nodeId = (parts.length >= 2) ? Integer.parseInt(parts[1]) : null;
-  // handleNodeAction(system, manager, activeNodes, crashedNodes, nodeIdMap,
-  // clients, "leave", nodeId, N, R, W);
-  // logger.log("Leave request sent");
-  // break;
-
-  // case "crash":
-  // nodeId = (parts.length >= 2) ? Integer.parseInt(parts[1]) : null;
-  // handleNodeAction(system, manager, activeNodes, crashedNodes, nodeIdMap,
-  // clients, "crash", nodeId, N, R, W);
-  // logger.log("Crash request sent");
-  // break;
-
-  // case "recover":
-  // nodeId = (parts.length >= 2) ? Integer.parseInt(parts[1]) : null;
-  // handleNodeAction(system, manager, activeNodes, crashedNodes, nodeIdMap,
-  // clients, "recover", nodeId, N, R,
-  // W);
-  // logger.log("Recovery request sent");
-  // break;
-
-  // case "client":
-  // String clientName = "client" + clients.size();
-  // ActorRef client = system.actorOf(Client.props(new ArrayList<>(activeNodes),
-  // clientName), clientName);
-  // clients.add(client);
-  // logger.log("Client creation request sent");
-  // break;
-
-  // case "status":
-  // manager.tell(new MarsSystemManager.GetSystemStatus(), ActorRef.noSender());
-  // break;
-
-  // case "exit":
-  // logger.log("Exiting interactive mode...");
-  // return;
-
-  // default:
-  // logger.log("Unknown command: " + command);
-  // }
-
-  // // Thread.sleep(500); // Give some time for the operation
-
-  // } catch (NumberFormatException e) {
-  // logger.log("Invalid number format");
-  // } catch (Exception e) {
-  // logger.log("Error: " + e.getMessage());
-  // }
-  // }
-  // }
-
-  // =====================
-  // Tests
-  // =====================
-
-  /**
-   * Test 4: Mixed operations stress test
-   * - Rapid sequence of various operations
-   * - Tests system under load
-   * - Includes membership changes during operations
-   */
-  // private void testMixedOperationsScenario() {
-  // logger.log("Starting mixed operations stress test...");
-
-  // // Phase 1: Rapid data operations
-  // logger.log("Phase 1: Rapid data operations...");
-  // for (int i = 2000; i < 2010; i++) {
-  // clients.get(0).tell(new Client.Write(i, "StressData" + i),
-  // ActorRef.noSender());
-  // // Thread.sleep(50); // Network propagation delay simulation
-  // }
-
-  // // Thread.sleep(1000);
-
-  // // Phase 2: Mixed reads and writes
-  // logger.log("Phase 2: Mixed reads and writes...");
-  // for (int i = 2000; i < 2010; i++) {
-  // if (i % 2 == 0) {
-  // clients.get(0).tell(new Client.Read(i), ActorRef.noSender());
-  // } else {
-  // clients.get(0).tell(new Client.Write(i, "Writed" + i),
-  // ActorRef.noSender());
-  // }
-  // // Thread.sleep(100); // Network propagation delay
-  // }
-
-  // // Thread.sleep(2000);
-
-  // // Phase 3: Operations with membership changes
-  // logger.log("Phase 3: Operations during membership changes...");
-
-  // // Start some operations
-  // clients.get(0).tell(new Client.Write(3000, "BeforeJoin"),
-  // ActorRef.noSender());
-  // // Thread.sleep(200);
-
-  // // Add a node while operations are potentially ongoing
-  // logger.log("Adding node during operations...");
-  // handleNodeAction(system, activeNodes, crashedNodes, nodeIdMap, clients,
-  // "join", null, N, R, W);
-
-  // // Continue operations
-  // clients.get(0).tell(new Client.Write(3001, "DuringJoin"),
-  // ActorRef.noSender());
-  // // Thread.sleep(200);
-  // clients.get(0).tell(new Client.Read(3000), ActorRef.noSender());
-
-  // // Thread.sleep(3000); // Wait for join to complete
-
-  // // More operations after join
-  // clients.get(0).tell(new Client.Write(3002, "AfterJoinCompleted"),
-  // ActorRef.noSender());
-  // // Thread.sleep(500);
-
-  // // Crash a node
-  // logger.log("Crashing node during operations...");
-  // handleNodeAction(system, activeNodes, crashedNodes, nodeIdMap, clients,
-  // "crash", null, N, R, W);
-
-  // // Continue operations with crashed node
-  // clients.get(0).tell(new Client.Read(3001), ActorRef.noSender());
-  // // Thread.sleep(200);
-  // clients.get(0).tell(new Client.Write(3003, "WithCrashedNode"),
-  // ActorRef.noSender());
-
-  // // Thread.sleep(2000);
-
-  // logger.log("Mixed operations stress test completed.\n");
-  // }
-
   // =====================
   // Actor Lifecycle
   // =====================
@@ -738,7 +565,6 @@ public class TestManager extends AbstractActor {
         .match(Client.ClientResponse.class, this::onClientResponse)
         .match(PrintStoreRequest.class, this::onPrintStoreRequest)
         .match(PrintStoreResponse.class, this::onPrintStoreResponse)
-        .match(LogSystemStatus.class, msg -> logSystemStatus())
         .build();
   }
 }

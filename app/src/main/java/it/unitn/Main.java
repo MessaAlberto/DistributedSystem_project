@@ -30,7 +30,7 @@ public class Main {
     final int W = Integer.parseInt(config.getProperty("W", "4"));
     final int TIMEOUT_SECONDS = Integer.parseInt(config.getProperty("TIMEOUT_SECONDS", "5"));
     final int INITIAL_NODES = Integer.parseInt(config.getProperty("INITIAL_NODES", "10"));
-    autoMode = Boolean.parseBoolean(config.getProperty("AUTO_MODE", "true"));
+    autoMode = Boolean.parseBoolean(config.getProperty("AUTO_MODE", "false"));
 
     // Apply quorum rules check
     if (R + W <= N && W <= N / 2) {
@@ -54,16 +54,47 @@ public class Main {
     Thread.sleep(2000); // Wait for the system to initialize
 
     try {
-      testMultipleClientsScenario(testManager);
+      testSigleWriteReadScenario(testManager);
       inputContinue();
 
-      testCrashInducedTimeoutScenario(testManager);
+      testJoin(testManager);
       inputContinue();
 
-      testJoinLeaveScenario(testManager);
+      testLeave(testManager);
       inputContinue();
 
-      testCrashRecoveryScenario(testManager);
+      testCrash(testManager);
+      inputContinue();
+
+      testRecover(testManager);
+      inputContinue();
+
+      testSequentialConsistencyScenario(testManager);
+      inputContinue();
+
+      testRecoverLostWritesScenario(testManager);
+      inputContinue();
+
+      testReadMissingKey(testManager);
+      inputContinue();
+
+      testConcurrentWritesSameKey(testManager);
+      inputContinue();
+
+      testClientReqDuringNodeAction(testManager);
+      inputContinue();
+
+      testNodeActionDuringClientReq(testManager);
+      inputContinue();
+
+      testAskToCrashedNode(testManager);
+      inputContinue();
+
+      testFailingJoin(testManager);
+      inputContinue();
+
+      testFailingRecover(testManager);
+      inputContinue();
     } finally {
       logger.log("All automated scenarios completed. Terminate the program when ready.");
     }
@@ -74,50 +105,29 @@ public class Main {
   // === Test ===
   // =================
 
-  /**
-   * Test 1: Single client basic Write/Read operations
-   * - Simple Write operation
-   * - Simple Read operation
-   * - Verifies data consistency
-   */
-    private static void testSigleWriteReadScenario(ActorRef testManager)
+  private static void testSigleWriteReadScenario(ActorRef testManager)
       throws InterruptedException {
     logger.log("");
     logger.log("============================================================");
     logger.log("====        Starting single-client basic test           ====");
     logger.log("============================================================");
 
-    logger.log("Storing key=1, value='HelloWorld'...");
-      CountDownLatch latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1, "HelloWorld", latch), ActorRef.noSender());
+    logger.log("Storing key=25, value='HelloWorld'...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(0, 25, "HelloWorld", latch), ActorRef.noSender());
     latch.await();
 
     inputContinue();
 
-    logger.log("Retrieving key=1...");
-      latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1, null, latch), ActorRef.noSender());
+    logger.log("Retrieving key=25...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(0, 25, null, latch), ActorRef.noSender());
     latch.await();
 
     inputContinue();
-
-    logger.log("Updating key=1 to value='UpdatedValue'...");
-      latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1, "UpdatedValue", latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    logger.log("Retrieving key=1 again...");
-      latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1, null, latch), ActorRef.noSender());
-    latch.await();
 
     testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
     Thread.sleep(4000);
-
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
     logger.log("");
     logger.log("============================================================");
     logger.log("====         Single-client basic test completed.        ====");
@@ -127,129 +137,15 @@ public class Main {
     logger.log("============================================================\n");
   }
 
-  /**
-   * Test 2: Multiple clients serving concurrent requests
-   * - Sends concurrent Write/Read operations
-   * - Tests same key access from different clients
-   */
-    private static void testMultipleClientsScenario(ActorRef testManager)
-      throws InterruptedException {
+  private static void testJoin(ActorRef testManager) throws InterruptedException {
     logger.log("");
     logger.log("============================================================");
-    logger.log("====        Starting multi-client concurrent test       ====");
-    logger.log("============================================================");
-    logger.log("Testing concurrent requests on same key (42)...");
-
-    // Concurrent operations on same key
-    CountDownLatch latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 42, "Value1_Client1", latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 42, "Value2_Client2", latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 42, "Value3_Client3", latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 42, null, latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 42, null, latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 42, null, latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    logger.log("Testing concurrent requests on different keys...");
-
-    // Concurrent operations on different keys
-    latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 10, "DataA", latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 20, "DataB", latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 80, "DataC", latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    latch = new CountDownLatch(3);
-    testManager.tell(new TestManager.ClientRequest(0, 10, null, latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(1, 20, null, latch), ActorRef.noSender());
-    testManager.tell(new TestManager.ClientRequest(2, 80, null, latch), ActorRef.noSender());
-    latch.await();
-
-    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
-    Thread.sleep(4000);
-
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
-    logger.log("");
-    logger.log("============================================================");
-    logger.log("====           Multi-client test completed.              ====");
-    logger.log("Summary:");
-    logger.log("  - All concurrent client requests have been processed.");
-    logger.log("  - System state is stable and ready for further tests.");
-    logger.log("============================================================\n");
-  }
-
-  /**
-   * Test 3: Crash-induced timeout
-   * - Crashes replicas responsible for the hot key
-   * - Forces write timeout due to W quorum not satisfiable
-   * - Shows recovery steps to restore healthy state
-   */
-  private static void testCrashInducedTimeoutScenario(ActorRef testManager) throws InterruptedException {
-    logger.log("");
-    logger.log("============================================================");
-    logger.log("====  Crash-induced quorum timeout test                ====");
+    logger.log("====              Starting node JOIN test                ====");
     logger.log("============================================================");
 
-    final int hotKey = 55;
-    logger.log("Priming key=" + hotKey + " before inducing failures...");
-    sendWrite(testManager, 0, hotKey, "TimeoutBaseline");
-
-    inputContinue();
-
-    logger.log("Crashing nodes 60 and 70 so only three replicas remain reachable for key " + hotKey + "...");
-    crashNode(testManager, 60);
-    crashNode(testManager, 70);
-
-    inputContinue();
-
-    logger.log("Attempting write expected to fail (W quorum broken)...");
-    sendWrite(testManager, 1, hotKey, "TimeoutAfterCrash");
-
-    logger.log("Performing read to verify the system still responds with minimal quorum...");
-    sendRead(testManager, 2, hotKey);
-
-    inputContinue();
-
-    logger.log("Recovering nodes 60 and 70 to restore full replication...");
-    recoverNode(testManager, 60);
-    recoverNode(testManager, 70);
-
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
-    logger.log("============================================================");
-    logger.log("====  Crash-induced quorum timeout test completed.     ====");
-    logger.log("============================================================\n");
-  }
-
-  /**
-   * Test 3: Node join and leave operations
-   * - Tests joining new nodes
-   * - Tests graceful leaving
-   * - Ensures operations work after membership changes
-   */
-    private static void testJoinLeaveScenario(ActorRef testManager)
-      throws InterruptedException {
-    logger.log("");
-    logger.log("============================================================");
-    logger.log("====        Starting node join/leave test              ====");
-    logger.log("============================================================");
-    logger.log("Current system status before join/leave:");
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
-
-    logger.log("Testing operations before JOIN...");
+    logger.log("Adding new node27 (JOIN)...");
     CountDownLatch latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 57, "BeforeJoin", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.NodeActionRequest("join", 27, latch), ActorRef.noSender());
     latch.await();
 
     inputContinue();
@@ -257,169 +153,384 @@ public class Main {
     testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
     Thread.sleep(4000);
 
-    inputContinue();
-
-    logger.log("Adding new node (JOIN)...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.NodeActionRequest("join", 55, latch), ActorRef.noSender());
-    latch.await();
-
-    inputContinue();
-
-    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
-    Thread.sleep(4000);
-
-    inputContinue();
-
-    // logger.log("Testing operations after JOIN...");
-    // latch = new CountDownLatch(1);
-    // testManager.tell(new TestManager.ClientRequest(0, 50, "AfterJoin", latch), ActorRef.noSender());
-    // latch.await();
-
-    // inputContinue();
-
-    // logger.log("Removing a node (LEAVE)...");
-    // latch = new CountDownLatch(1);
-    // testManager.tell(new TestManager.NodeActionRequest("leave", latch), ActorRef.noSender());
-    // latch.await();
-
-    // inputContinue();
-
-    // logger.log("Testing operations after LEAVE...");
-
-    // latch = new CountDownLatch(1);
-    // testManager.tell(new TestManager.ClientRequest(0, 50, null, latch), ActorRef.noSender());
-    // latch.await();
-
-    // inputContinue();
-
-    // latch = new CountDownLatch(1);
-    // testManager.tell(new TestManager.ClientRequest(0, 60, "AfterLeave", latch), ActorRef.noSender());
-    // latch.await();
-
-    // inputContinue();
-
-    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
-    Thread.sleep(4000);
-
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
     logger.log("\n============================================================");
-    logger.log("====           Join/Leave test completed.              ====");
+    logger.log("====               Node JOIN test completed.            ====");
     logger.log("Summary:");
-    logger.log("  - Node JOIN and LEAVE operations completed successfully.");
+    logger.log("  - Node JOIN operation completed successfully.");
     logger.log("  - System state is stable and ready for further tests.");
     logger.log("============================================================\n");
   }
 
-  /**
-   * Test 3: Crash and recovery with ongoing operations
-   * - Crashes a node
-   * - Continues operations while node is crashed
-   * - Recovers the node
-   * - Verifies data consistency
-   */
-    private static void testCrashRecoveryScenario(ActorRef testManager)
+  private static void testLeave(ActorRef testManager) throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====              Starting node LEAVE test               ====");
+    logger.log("============================================================");
+
+    logger.log("Removing node30 (LEAVE)...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("leave", 30, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("\n============================================================");
+    logger.log("====               Node LEAVE test completed.           ====");
+    logger.log("Summary:");
+    logger.log("  - Node LEAVE operation completed successfully.");
+    logger.log("  - System state is stable and ready for further tests.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testCrash(ActorRef testManager) throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====             Starting node CRASH test                ====");
+    logger.log("============================================================");
+
+    logger.log("Crashing node40...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("crash", 40, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("\n============================================================");
+    logger.log("====              Node CRASH test completed.            ====");
+    logger.log("Summary:");
+    logger.log("  - Node CRASH operation completed successfully.");
+    logger.log("  - System state is stable and ready for further tests.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testRecover(ActorRef testManager) throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====           Starting node RECOVER test               ====");
+    logger.log("============================================================");
+
+    logger.log("Recovering node40...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("recover", 40, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("\n============================================================");
+    logger.log("====             Node RECOVER test completed.          ====");
+    logger.log("Summary:");
+    logger.log("  - Node RECOVER operation completed successfully.");
+    logger.log("  - System state is stable and ready for further tests.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testSequentialConsistencyScenario(ActorRef testManager)
       throws InterruptedException {
     logger.log("");
     logger.log("============================================================");
-    logger.log("====        Starting node Crash/Recovery test           ====");
+    logger.log("====     Starting Sequential Consistency test           ====");
     logger.log("============================================================");
-    logger.log("Storing initial data...");
 
+    logger.log("Client2 writing key=65, value='First' asking node20...");
     CountDownLatch latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1000, "InitialData", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(2, 20, 65, "First", latch), ActorRef.noSender());
     latch.await();
 
-    logger.log("Crashing a node...");
+    inputContinue();
+
+    logger.log("Client0 writes key=65, value='Second' asking node27...");
     latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.NodeActionRequest("crash", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(0, 27, 65, "Second", latch), ActorRef.noSender());
     latch.await();
 
-    logger.log("Current system status after crash:");
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
+    inputContinue();
 
-    logger.log("Continuing operations while node is crashed...");
+    logger.log("Client1 reads key=65 (should see 'Second') asking node 40...");
     latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1001, "DuringCrash1", latch), ActorRef.noSender());
-    latch.await();
-
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1002, "DuringCrash2", latch), ActorRef.noSender());
-    latch.await();
-
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1000, null, latch), ActorRef.noSender());
-    latch.await();
-
-    logger.log("Recovering the crashed node...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.NodeActionRequest("recover", latch), ActorRef.noSender());
-    latch.await();
-
-    logger.log("Testing data consistency after recovery...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1000, null, latch), ActorRef.noSender());
-    latch.await();
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1001, null, latch), ActorRef.noSender());
-    latch.await();
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1002, null, latch), ActorRef.noSender());
-    latch.await();
-
-    logger.log("Adding more data after recovery...");
-    latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(0, 1003, "AfterRecovery", latch), ActorRef.noSender());
+    testManager.tell(new TestManager.ClientRequest(1, 40, 65, null, latch), ActorRef.noSender());
     latch.await();
 
     testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
     Thread.sleep(4000);
 
-    testManager.tell(new TestManager.LogSystemStatus(), ActorRef.noSender());
-    Thread.sleep(500);
-    logger.log("\n============================================================");
-    logger.log("====         Crash/Recovery test completed.            ====");
-    logger.log("============================================================\n");
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====      Sequential Consistency test completed.       ====");
     logger.log("Summary:");
-    logger.log("  - Node CRASH and RECOVERY operations completed successfully.");
-    logger.log("  - Data consistency verified after recovery.");
+    logger.log("  - Sequential consistency verified across clients.");
+    logger.log("  - Data integrity maintained during operations.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testRecoverLostWritesScenario(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====     Starting Recover Lost Writes test              ====");
+    logger.log("============================================================");
+
+    logger.log("Node10 crashing...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("crash", 10, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Client2 writing key=65, value='Third' asking node40...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(2, 40, 65, "Third", latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Node10 reovering...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("recover", 10, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Client0 reads key=65 (should see 'Third') asking node27...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(0, 27, 65, null, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====      Recover Lost Writes test completed.          ====");
+    logger.log("Summary:");
+    logger.log("  - Lost writes successfully recovered after node recovery.");
+    logger.log("  - Data consistency verified across the system.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testReadMissingKey(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====        Starting Read Missing Key test             ====");
+    logger.log("============================================================");
+
+    logger.log("Client1 reading non-existent key=999 asking node50...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(1, 999, null, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====        Read Missing Key test completed.             ====");
+    logger.log("Summary:");
+    logger.log("  - Read operation on non-existent key handled gracefully.");
+    logger.log("  - System state remains consistent.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testConcurrentWritesSameKey(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====     Starting Concurrent Writes Same Key test      ====");
+    logger.log("============================================================");
+
+    logger.log("Client2 writing key=18, value='Alpha' asking node0...");
+    CountDownLatch latch = new CountDownLatch(2);
+    testManager.tell(new TestManager.ClientRequest(2, 0, 18, "Alpha", latch), ActorRef.noSender());
+
+    logger.log("Client0 writing key=18, value='Beta' asking node40...");
+    testManager.tell(new TestManager.ClientRequest(0, 40, 18, "Beta", latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Client2 reading key=18 asking node27...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(2, 27, 18, null, latch), ActorRef.noSender());
+    latch.await();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====   Concurrent Writes Same Key test completed.      ====");
+    logger.log("Summary:");
+    logger.log("  - Concurrent writes to the same key handled correctly.");
+    logger.log("  - Data consistency maintained across operations.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testClientReqDuringNodeAction(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====     Starting Request During Node Action test       ====");
+    logger.log("============================================================");
+
+    logger.log("Join node70...");
+    CountDownLatch latch = new CountDownLatch(2);
+    testManager.tell(new TestManager.NodeActionRequest("join", 70, latch), ActorRef.noSender());
+
+    logger.log("While join is in progress, Client1 writes key=33, value='Delta' asking node20...");
+    testManager.tell(new TestManager.ClientRequest(1, 20, 33, "Delta", latch), ActorRef.noSender());
+    latch.await(); // Wait for crash to complete
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====   Request During Node Action test completed.       ====");
+    logger.log("Summary:");
+    logger.log("  - Requests during node actions handled appropriately.");
+    logger.log("  - System stability maintained.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testNodeActionDuringClientReq(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====     Starting Node Action During Request test       ====");
+    logger.log("============================================================");
+
+    logger.log("Client2 reads key=18 asking node10...");
+    CountDownLatch latch = new CountDownLatch(2);
+    testManager.tell(new TestManager.ClientRequest(2, 10, 18, null, latch), ActorRef.noSender());
+
+    logger.log("While request is pending, crash node10...");
+    testManager.tell(new TestManager.NodeActionRequest("crash", 10, latch), ActorRef.noSender());
+    latch.await(); // Wait for crash to complete
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====   Node Action During Request test completed.       ====");
+    logger.log("Summary:");
+    logger.log("  - Node actions during pending requests handled correctly.");
+    logger.log("  - Data integrity and system stability maintained.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testAskToCrashedNode(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====         Starting Ask to Crashed Node test         ====");
+    logger.log("============================================================");
+
+    logger.log("Crashing node27...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("crash", 27, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Client0 writing key=30, value='Epsilon' asking crashed node27...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(0, 27, 30, "Epsilon", latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Crashing node40...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("crash", 40, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    logger.log("Client1 reading key=30 asking crashed node40...");
+    latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.ClientRequest(1, 40, 30, null, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====       Ask to Crashed Node test completed.        ====");
+    logger.log("Summary:");
+    logger.log("  - System handled requests to crashed nodes gracefully.");
+    logger.log("  - Stability and data integrity maintained.");
+    logger.log("============================================================\n");
+  }
+
+  private static void testFailingJoin(ActorRef testManager)
+      throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====          Starting Failing JOIN test               ====");
+    logger.log("============================================================");
+
+    logger.log("Simulating failing JOIN for node25 (should fail due to the crash of its successor node, node27)...");
+    CountDownLatch latch = new CountDownLatch(1);
+    testManager.tell(new TestManager.NodeActionRequest("join", 25, latch), ActorRef.noSender());
+    latch.await();
+
+    inputContinue();
+
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
+
+    logger.log("\n============================================================");
+    logger.log("====            Failing JOIN test completed.           ====");
+    logger.log("Summary:");
+    logger.log("  - Failing JOIN operation handled correctly.");
     logger.log("  - System state is stable and ready for further tests.");
-    logger.log("------------------------------------------------------------\n");
+    logger.log("============================================================\n");
   }
 
-  private static void sendWrite(ActorRef testManager, int clientIndex, int key, String value)
+  private static void testFailingRecover(ActorRef testManager)
       throws InterruptedException {
+    logger.log("");
+    logger.log("============================================================");
+    logger.log("====         Starting Failing RECOVER test             ====");
+    logger.log("============================================================");
+
+    logger
+        .log("Simulating failing RECOVER for node40 (should fail due to the crash of its predecessor node, node27)...");
     CountDownLatch latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(clientIndex, key, value, latch), ActorRef.noSender());
+    testManager.tell(new TestManager.NodeActionRequest("recover", 40, latch), ActorRef.noSender());
     latch.await();
-  }
 
-  private static void sendRead(ActorRef testManager, int clientIndex, int key) throws InterruptedException {
-    CountDownLatch latch = new CountDownLatch(1);
-    testManager.tell(new TestManager.ClientRequest(clientIndex, key, null, latch), ActorRef.noSender());
-    latch.await();
-  }
+    inputContinue();
 
-  private static void crashNode(ActorRef testManager, int nodeId) throws InterruptedException {
-    logger.log(" -> Requesting crash of node " + nodeId);
-    triggerNodeAction(testManager, "crash", nodeId);
-  }
+    testManager.tell(new TestManager.PrintStoreRequest(), ActorRef.noSender());
+    Thread.sleep(4000);
 
-  private static void recoverNode(ActorRef testManager, int nodeId) throws InterruptedException {
-    logger.log(" -> Requesting recovery of node " + nodeId);
-    triggerNodeAction(testManager, "recover", nodeId);
-  }
-
-  private static void triggerNodeAction(ActorRef testManager, String action, Integer nodeId)
-      throws InterruptedException {
-    CountDownLatch latch = new CountDownLatch(1);
-    TestManager.NodeActionRequest request = (nodeId == null)
-        ? new TestManager.NodeActionRequest(action, latch)
-        : new TestManager.NodeActionRequest(action, nodeId, latch);
-    testManager.tell(request, ActorRef.noSender());
-    latch.await();
+    logger.log("\n============================================================");
+    logger.log("====           Failing RECOVER test completed.        ====");
+    logger.log("Summary:");
+    logger.log("  - Failing RECOVER operation handled correctly.");
+    logger.log("  - System state is stable and ready for further tests.");
+    logger.log("============================================================\n");
   }
 
   public static void inputContinue() {

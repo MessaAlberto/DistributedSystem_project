@@ -38,32 +38,34 @@ public class Client extends AbstractActor {
   // === Messages ===
 
   public static class Write implements Serializable {
-    public ActorRef node = null; // Optional specific node to target
+    public ActorRef cordNode;
     public final int key;
     public final String value;
 
     public Write(int key, String value) {
+      this.cordNode = null;
       this.key = key;
       this.value = value;
     }
 
-    public Write(ActorRef node, int key, String value) {
-      this.node = node;
+    public Write(ActorRef cordNode, int key, String value) {
+      this.cordNode = cordNode;
       this.key = key;
       this.value = value;
     }
   }
 
   public static class Read implements Serializable {
-    public ActorRef node = null; // Optional specific node to target
+    public ActorRef cordNode;
     public final int key;
 
     public Read(int key) {
+      this.cordNode = null;
       this.key = key;
     }
 
-    public Read(ActorRef node, int key) {
-      this.node = node;
+    public Read(ActorRef cordNode, int key) {
+      this.cordNode = cordNode;
       this.key = key;
     }
   }
@@ -135,7 +137,7 @@ public class Client extends AbstractActor {
       return;
     }
 
-    ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
+    ActorRef target = msg.cordNode != null ? msg.cordNode : nodes.get(random.nextInt(nodes.size()));
     logger.log("Sending WriteRequest key=" + msg.key + ", value=\"" + msg.value + "\" to " + target.path().name());
     target.tell(new Node.WriteRequest(msg.key, msg.value), getSelf());
 
@@ -153,7 +155,7 @@ public class Client extends AbstractActor {
       return;
     }
 
-    ActorRef target = msg.node != null ? msg.node : nodes.get(random.nextInt(nodes.size()));
+    ActorRef target = msg.cordNode != null ? msg.cordNode : nodes.get(random.nextInt(nodes.size()));
     logger.log("Sending ReadRequest key=" + msg.key + " to " + target.path().name());
     target.tell(new Node.ReadRequest(msg.key), getSelf());
 
@@ -162,16 +164,17 @@ public class Client extends AbstractActor {
 
   private void onWriteResponse(WriteResponse msg) {
     logger.log("Received WriteResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
-    cancelRequest("WRITE " + msg.key + " " + msg.value);
-    sendResponse("WRITE " + msg.key + " " + msg.value, true,
+    String requestId = "WRITE " + msg.key + " " + msg.value;
+    cancelRequest(requestId);
+    sendResponse(requestId, true,
         "Write successful for key=" + msg.key + " version=" + msg.version);
   }
 
-
   private void onReadResponse(ReadResponse msg) {
     logger.log("Received ReadResponse for key=" + msg.key + " value=\"" + msg.value + "\" version=" + msg.version);
-    cancelRequest("READ " + msg.key);
-    sendResponse("READ " + msg.key, true, "Value=\"" + msg.value + "\" version=" + msg.version);
+    String requestId = "READ " + msg.key;
+    cancelRequest(requestId);
+    sendResponse(requestId, true, "Value=\"" + msg.value + "\" version=" + msg.version);
   }
 
   private void onUpdateNodeList(UpdateNodeList msg) {
@@ -185,25 +188,16 @@ public class Client extends AbstractActor {
   private void onOperationFailed(Node.OperationFailed msg) {
     String requestId = "WRITE " + msg.key + " " + msg.value;
 
-    // Try to cancel the request if still pending
-    Cancellable pr = pendingRequests.remove(requestId);
-    if (pr != null) {
-      if (!pr.isCancelled()) {
-        pr.cancel();
-      }
-      logger.logError("Operation failed for key=" + msg.key + ": " + msg.reason);
-      sendResponse(requestId, false, "Operation failed: " + msg.reason);
-    } else {
-      // The request was already completed (likely timed out)
-      // logger.log("Ignored late OperationFailed for key=" + msg.key + " (request already handled)");
-    }
+    cancelRequest(requestId);
+    logger.logError("Operation failed for request: " + requestId + " Reason: " + msg.reason);
+    sendResponse(requestId, false, "Operation failed: " + msg.reason);
   }
 
   private void onOperationTimeout(OperationTimeout msg) {
     Cancellable pr = pendingRequests.remove(msg.requestId);
     if (pr != null) {
       logger.logError("Timeout reached for request: " + msg.requestId);
-      sendResponse(msg.requestId, false, "Timeout waiting for response.");
+      sendResponse(msg.requestId, false, "Timeout waiting for response. Node may be unresponsive (crashed).");
     }
   }
 

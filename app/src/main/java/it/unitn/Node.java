@@ -42,15 +42,13 @@ public class Node extends AbstractActor {
 
   // Timeout duration in seconds
   private final int timeoutSeconds;
-  private Cancellable joinTimeout; // TODO
+  private Cancellable joinTimeout;
   private Cancellable recoverTimeout;
   private final Map<String, String> pendingDataTransferDescriptions = new LinkedHashMap<>();
 
-  //dealy parameters
-
+  // dealy parameters
   private static final long MIN_PROP_DELAY_MS = 10;
   private static final long MAX_PROP_DELAY_MS = 60;
-
 
   // Keys that need to be recovered during JOIN/RECOVERY
   private final Set<Integer> recoveryKeysBuffer = new HashSet<>();
@@ -392,7 +390,8 @@ public class Node extends AbstractActor {
       cancelMembershipTimeout();
       clearPendingTransfers();
       testManager.tell(new TestManager.NodeActionResponse("join", nodeId, true, "Maintenance completed"), getSelf());
-      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join", nodeId, true));
+      // sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("join",
+      // nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
@@ -401,7 +400,8 @@ public class Node extends AbstractActor {
       cancelMembershipTimeout();
       clearPendingTransfers();
       testManager.tell(new TestManager.NodeActionResponse("recover", nodeId, true, "Maintenance completed"), getSelf());
-      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("recover", nodeId, true));
+      // sendWithRandomDelay(testManager, new
+      // TestManager.NodeActionResponse("recover", nodeId, true));
       this.serving = true;
       this.mode = Mode.IDLE;
       getContext().become(activeReceive());
@@ -713,7 +713,8 @@ public class Node extends AbstractActor {
 
     // Check if some node is already coordinating a write for this key
     if (writeLocks.containsKey(msg.key)) {
-      sendWithRandomDelay(getSender(), new OperationFailed(msg.key, msg.value, "Another write in progress for this key"));
+      sendWithRandomDelay(getSender(),
+          new OperationFailed(msg.key, msg.value, "Another write in progress for this key"));
       logger.log("Rejected WriteRequest for key=" + msg.key + " due to ongoing write");
       return;
     }
@@ -757,8 +758,9 @@ public class Node extends AbstractActor {
       if (mode == Mode.JOINING || mode == Mode.RECOVERING) {
         logger.logError("Maintenance VersionReadResponse for key=" + msg.key
             + " rejected by node " + nodeIdMap.get(getSender()) + " due to ongoing write");
+        return;
       }
-      logger.log("Ignored VersionReadResponse for key=" + msg.key + " due to ongoing write");
+      logger.log("Coord: Ignored VersionReadResponse for key=" + msg.key + " due to ongoing write");
       return;
     }
 
@@ -784,6 +786,21 @@ public class Node extends AbstractActor {
           .max(Comparator.comparingInt(v -> v.version))
           .get();
 
+      // Quorum reached but no existing value found
+      if (maxVersionResponse.version == 0) {
+        if (mode == Mode.JOINING || mode == Mode.RECOVERING) {  // It should never happen
+          logger.logError("Maintenance Read for key=" + msg.key + " found no existing value");
+        } else {  // It happens if client asked for a non-existing key
+          logger.log("(Read) Key=" + msg.key + " not found (all versions 0)");
+          sendWithRandomDelay(state.client, new OperationFailed(msg.key, "Key not found"));
+          if (state.timeout != null && !state.timeout.isCancelled()) {
+            state.timeout.cancel();
+          }
+          readRequestList.remove(msg.key + " " + msg.requester.path().name());
+          return;
+        }
+      }
+
       // Update local store if the version is newer
       DataItem current = store.get(msg.key);
       if (current != null && maxVersionResponse.version > current.version) {
@@ -794,8 +811,7 @@ public class Node extends AbstractActor {
       // Respond to client if this is an external read
       if (mode == Mode.IDLE && state.client != getSelf()) {
         logger.log("(Read) Returning value v=" + maxVersionResponse.version + " to client");
-        sendWithRandomDelay(state.client,
-            new Client.ReadResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version));
+        sendWithRandomDelay(state.client, new Client.ReadResponse(msg.key, maxVersionResponse.value, maxVersionResponse.version));
       }
 
       // Cleanup state and timeout
@@ -819,6 +835,7 @@ public class Node extends AbstractActor {
   private void onGetVersionWrite(GetVersionWrite msg) {
     if (writeLocks.containsKey(msg.key)) {
       // Write in progress, reject
+      logger.log("Rejected GetVersionWrite from Coord: " + getSender().path().name() + " for key=" + msg.key + " due to ongoing write");
       sendWithRandomDelay(msg.requester, new VersionWriteResponse(msg.key, -1, ""));
       return;
     }
@@ -837,7 +854,7 @@ public class Node extends AbstractActor {
   private void onVersionWriteResponse(VersionWriteResponse msg) {
     if (msg.version == -1) {
       // The sender node is busy with another write
-      logger.log("Ignored VersionWriteResponse for key=" + msg.key + " due to ongoing write");
+      logger.log("Coord: Ignored VersionWriteResponse from " + getSender().path().name() + " for key=" + msg.key + " due to ongoing write");
       return;
     }
 
@@ -887,7 +904,8 @@ public class Node extends AbstractActor {
    */
   private void onUpdateValue(UpdateValue msg) {
     if (writeLocks.containsKey(msg.key) && writeLocks.get(msg.key) != getSender()) {
-      // This node should not receive UpdateValue from a node that does not hold the lock for this key
+      // This node should not receive UpdateValue from a node that does not hold the
+      // lock for this key
       logger.log("Rejected UpdateValue for key=" + msg.key + " due to lock held by another node");
       return;
     }
@@ -1010,7 +1028,8 @@ public class Node extends AbstractActor {
         sendWithRandomDelay(p, new AnnounceLeave(getSelf(), nodeId));
       }
       testManager.tell(new TestManager.NodeActionResponse("leave", nodeId, true), getSelf());
-      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("leave", nodeId, true));
+      // sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("leave",
+      // nodeId, true));
       getContext().stop(getSelf()); // stop the actor
     }
 
@@ -1023,7 +1042,8 @@ public class Node extends AbstractActor {
       this.serving = false;
       getContext().become(crashedReceive());
       logger.log("Crashing node");
-      //sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("crash", nodeId, true));
+      // sendWithRandomDelay(testManager, new TestManager.NodeActionResponse("crash",
+      // nodeId, true));
       testManager.tell(new TestManager.NodeActionResponse("crash", nodeId, true), getSelf());
     }
 
@@ -1160,9 +1180,6 @@ public class Node extends AbstractActor {
       }
     }
 
-    // TODO: this message is used in JOIN and RECOVER operations, if the requesting
-    // nodes reach this message means that bootstrap and the successor/predecessor
-    // are alive and not crashed. So, the timeout can be cancelled.
     if (mode == Mode.JOINING) {
       // 1) Store received items
       store.clear();
@@ -1343,5 +1360,4 @@ public class Node extends AbstractActor {
     return activeReceive();
   }
 
-  
 }
