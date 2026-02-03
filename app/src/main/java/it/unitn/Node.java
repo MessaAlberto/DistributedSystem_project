@@ -24,7 +24,7 @@ public class Node extends AbstractActor {
 
   private final Logger logger;
 
-  private final int nodeId; // TODO: need to be treated as unsigned int
+  private final int nodeId;
   private final List<ActorRef> nodes = new ArrayList<>();
   private final Map<ActorRef, Integer> nodeIdMap = new HashMap<>(); // Map of node ActorRef to nodeId
   private boolean joining;
@@ -32,7 +32,7 @@ public class Node extends AbstractActor {
   private ActorRef bootstrap; // Bootstrap node for joining
   private Mode mode; // Current mode of the node
   private boolean serving;
-  // TODO: MAP KEYneed to be treated as unsigned int
+  
   private final Map<Integer, DataItem> store = new HashMap<>();
   private final Map<Integer, ActorRef> writeLocks = new HashMap<>();
 
