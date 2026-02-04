@@ -1,894 +1,1020 @@
 Reusing configuration cache.
 > Task :app:processResources UP-TO-DATE
-> Task :app:compileJava
-> Task :app:classes
+> Task :app:compileJava UP-TO-DATE
+> Task :app:classes UP-TO-DATE
 
 > Task :app:run
 [Main] === Mars Distributed Storage System ===
-[Main] Configuration: N=5, R=3, W=4, TIMEOUT_SECONDS=5, INITIAL_NODES=10
+[Main] Configuration: N=3, R=2, W=2, TIMEOUT_SECONDS=5, INITIAL_NODES=5
 [Main] ========================================
 
-22:10:21.956 [MarsSystem-akka.actor.default-dispatcher-5] INFO akka.event.slf4j.Slf4jLogger - Slf4jLogger started
-[TestManager] Iniitalizing 10 nodes...
+17:31:14.498 [MarsSystem-akka.actor.default-dispatcher-4] INFO akka.event.slf4j.Slf4jLogger - Slf4jLogger started
+[TestManager] Iniitalizing 5 nodes...
 [TestManager] All nodes initialized and joined the system.
 [TestManager] Creating multiple clients...
-[TestManager] Created client0 with access to 10 nodes.
-[TestManager] Created client1 with access to 10 nodes.
-[TestManager] Created client2 with access to 10 nodes.
+[TestManager] Created client0 with access to 5 nodes.
+[TestManager] Created client1 with access to 5 nodes.
+[TestManager] Created client2 with access to 5 nodes.
 [TestManager] 
 
 [TestManager] =====================
 [TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 10
+[TestManager] Active nodes: 5
 [TestManager] Crashed nodes: 0
-[TestManager] Active node IDs: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+[TestManager] Active node IDs: [0, 10, 20, 30, 40]
 [TestManager] Client list: 3
 [TestManager] Clients: [client0, client1, client2]
 [TestManager] =====================
 [Main] 
 [Main] ============================================================
-[Main] ====        Starting multi-client concurrent test       ====
+[Main] ====        Starting single-client basic test           ====
 [Main] ============================================================
-[Main] Testing concurrent requests on same key (42)...
-[client1] Sending WriteRequest key=42, value="Value2_Client2" to Node30
-[client2] Sending WriteRequest key=42, value="Value3_Client3" to Node60
-[client0] Sending WriteRequest key=42, value="Value1_Client1" to Node70
-[Node 30] Received WriteRequest for key=42 value="Value2_Client2"
-[Node 60] Received WriteRequest for key=42 value="Value3_Client3"
-[Node 70] Received WriteRequest for key=42 value="Value1_Client1"
-[Node 60] Notifying node 50 for WriteRequest: key=42 value="Value3_Client3"
-[Node 30] Notifying node 50 for WriteRequest: key=42 value="Value2_Client2"
-[Node 70] Notifying node 50 for WriteRequest: key=42 value="Value1_Client1"
-[Node 70] Notifying node 60 for WriteRequest: key=42 value="Value1_Client1"
-[Node 60] Notifying node 60 for WriteRequest: key=42 value="Value3_Client3"
-[Node 30] Notifying node 60 for WriteRequest: key=42 value="Value2_Client2"
-[Node 70] Notifying node 70 for WriteRequest: key=42 value="Value1_Client1"
-[Node 30] Notifying node 70 for WriteRequest: key=42 value="Value2_Client2"
-[Node 70] Notifying node 80 for WriteRequest: key=42 value="Value1_Client1"
-[Node 30] Notifying node 80 for WriteRequest: key=42 value="Value2_Client2"
-[Node 60] Notifying node 70 for WriteRequest: key=42 value="Value3_Client3"
-[Node 30] Notifying node 90 for WriteRequest: key=42 value="Value2_Client2"
-[Node 60] Notifying node 80 for WriteRequest: key=42 value="Value3_Client3"
-[Node 70] Notifying node 90 for WriteRequest: key=42 value="Value1_Client1"
-[Node 60] Notifying node 90 for WriteRequest: key=42 value="Value3_Client3"
-[Node 60] (Write) GetVersionWrite responses: 80=0
-[Node 60] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 30] (Write) GetVersionWrite responses: 60=0
-[Node 30] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 60] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 70] (Write) GetVersionWrite responses: 50=0
-[Node 70] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 60] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 70] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 70] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 30] (Write) GetVersionWrite responses: 60=0, 70=0
-[Node 30] (Write) GetVersionWrite responses: 60=0, 70=0, 90=0
-[Node 30] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 60] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 70] Ignored VersionWriteResponse for key=42 due to ongoing write
-[Node 30] WriteTimeout: Write quorum W=4 not reached for key 42 (client=client1)
-[Node 60] WriteTimeout: Write quorum W=4 not reached for key 42 (client=client2)
-[Node 70] WriteTimeout: Write quorum W=4 not reached for key 42 (client=client0)
-[client1] Sending response to manager: WRITE 42 Value2_Client2 success=false message=Operation failed: Write quorum W=4 not reached for key 42 (client=client1)
-[client2] Sending response to manager: WRITE 42 Value3_Client3 success=false message=Operation failed: Write quorum W=4 not reached for key 42 (client=client2)
-[TestManager] Received client response: WRITE 42 Value2_Client2 success=false
-[TestManager] Pending client requests remain, batch not yet complete.
-[TestManager] Received client response: WRITE 42 Value3_Client3 success=false
-[TestManager] Pending client requests remain, batch not yet complete.
-[client0] Sending response to manager: WRITE 42 Value1_Client1 success=false message=Operation failed: Write quorum W=4 not reached for key 42 (client=client0)
-[TestManager] Received client response: WRITE 42 Value1_Client1 success=false
-[TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[client0] Sending ReadRequest key=42 to Node90
-[client2] Sending ReadRequest key=42 to Node70
-[client1] Sending ReadRequest key=42 to Node10
-[Node 90] Received ReadRequest for key=42
-[Node 10] Received ReadRequest for key=42
-[Node 70] Received ReadRequest for key=42
-[Node 90] Rejected ReadRequest for key=42 due to ongoing write
-[Node 10] Notifying node 50 for ReadRequest: key=42 client=client1
-[Node 70] Notifying node 50 for ReadRequest: key=42 client=client2
-[Node 10] Notifying node 60 for ReadRequest: key=42 client=client1
-[Node 10] Notifying node 70 for ReadRequest: key=42 client=client1
-[Node 70] Notifying node 60 for ReadRequest: key=42 client=client2
-[Node 10] Notifying node 80 for ReadRequest: key=42 client=client1
-[Node 70] Notifying node 70 for ReadRequest: key=42 client=client2
-[Node 10] Notifying node 90 for ReadRequest: key=42 client=client1
-[Node 70] Notifying node 80 for ReadRequest: key=42 client=client2
-[Node 70] Notifying node 90 for ReadRequest: key=42 client=client2
-[Node 70] Started read coordinator for key= (42 client2)
-[Node 10] Started read coordinator for key= (42 client1)
-[Node 50] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 80] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 70] Replied GetVersionRead for key=42 v=0
-[Node 60] Replied GetVersionRead for key=42 v=0
-[Node 60] Replied GetVersionRead for key=42 v=0
-[Node 70] Replied GetVersionRead for key=42 v=0
-[Node 80] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 90] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 70] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 70] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 50] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 90] Rejected GetVersionRead for key=42 due to ongoing write
-[Node 10] (Read) GetVersionRead responses: 60=0
-[Node 10] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 70] (Read) GetVersionRead responses: 60=0
-[Node 70] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 10] (Read) GetVersionRead responses: 60=0, 70=0
-[Node 10] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 70] (Read) GetVersionRead responses: 60=0, 70=0
-[Node 10] Ignored VersionReadResponse for key=42 due to ongoing write
-[Node 70] ReadTimeout: Read quorum R=3 not reached for key 42 (requester=client2)
-[Node 10] ReadTimeout: Read quorum R=3 not reached for key 42 (requester=client1)
-[client2] Sending response to manager: READ 42 success=false message=Timeout waiting for response.
-[client1] Sending response to manager: READ 42 success=false message=Timeout waiting for response.
-[TestManager] Received client response: READ 42 success=false
-[TestManager] Pending client requests remain, batch not yet complete.
-[client0] Sending response to manager: READ 42 success=false message=Timeout waiting for response.
-[TestManager] Received client response: READ 42 success=false
-[TestManager] Pending client requests remain, batch not yet complete.
-[TestManager] Received client response: READ 42 success=false
-[TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] Testing concurrent requests on different keys...
-[client0] Sending WriteRequest key=10, value="DataA" to Node80
-[client2] Sending WriteRequest key=80, value="DataC" to Node60
-[client1] Sending WriteRequest key=20, value="DataB" to Node20
-[Node 80] Received WriteRequest for key=10 value="DataA"
-[Node 60] Received WriteRequest for key=80 value="DataC"
-[Node 80] Notifying node 10 for WriteRequest: key=10 value="DataA"
-[Node 20] Received WriteRequest for key=20 value="DataB"
-[Node 80] Notifying node 20 for WriteRequest: key=10 value="DataA"
-[Node 60] Notifying node 80 for WriteRequest: key=80 value="DataC"
-[Node 80] Notifying node 30 for WriteRequest: key=10 value="DataA"
-[Node 60] Notifying node 90 for WriteRequest: key=80 value="DataC"
-[Node 20] Notifying node 20 for WriteRequest: key=20 value="DataB"
-[Node 60] Notifying node 0 for WriteRequest: key=80 value="DataC"
-[Node 20] Notifying node 30 for WriteRequest: key=20 value="DataB"
-[Node 60] Notifying node 10 for WriteRequest: key=80 value="DataC"
-[Node 80] Notifying node 40 for WriteRequest: key=10 value="DataA"
-[Node 20] Notifying node 40 for WriteRequest: key=20 value="DataB"
-[Node 80] Notifying node 50 for WriteRequest: key=10 value="DataA"
-[Node 20] Notifying node 50 for WriteRequest: key=20 value="DataB"
-[Node 60] Notifying node 20 for WriteRequest: key=80 value="DataC"
-[Node 20] Notifying node 60 for WriteRequest: key=20 value="DataB"
-[Node 20] (Write) GetVersionWrite responses: 50=0
-[Node 60] (Write) GetVersionWrite responses: 90=0
-[Node 80] (Write) GetVersionWrite responses: 10=0
-[Node 20] (Write) GetVersionWrite responses: 20=0, 50=0
-[Node 80] (Write) GetVersionWrite responses: 10=0, 40=0
-[Node 20] (Write) GetVersionWrite responses: 20=0, 50=0, 60=0
-[Node 60] (Write) GetVersionWrite responses: 10=0, 90=0
-[Node 80] (Write) GetVersionWrite responses: 10=0, 20=0, 40=0
-[Node 20] (Write) GetVersionWrite responses: 20=0, 30=0, 50=0, 60=0
+[Main] Storing key=25, value='HelloWorld'...
+[client0] Sending WriteRequest key=25, value="HelloWorld" to Node20
+[Node 20] Received WriteRequest for key=25 value="HelloWorld"
+[Node 20] Notifying node 30 for WriteRequest: key=25 value="HelloWorld"
+[Node 20] Notifying node 40 for WriteRequest: key=25 value="HelloWorld"
+[Node 20] Notifying node 0 for WriteRequest: key=25 value="HelloWorld"
+[Node 20] (Write) GetVersionWrite responses: 40=0
+[Node 20] (Write) GetVersionWrite responses: 0=0, 40=0
 [Node 20] Computed new version 1
-[Node 60] (Write) GetVersionWrite responses: 10=0, 80=0, 90=0
-[Node 80] (Write) GetVersionWrite responses: 10=0, 20=0, 30=0, 40=0
-[Node 80] Computed new version 1
-[Node 60] (Write) GetVersionWrite responses: 10=0, 20=0, 80=0, 90=0
-[Node 60] Computed new version 1
-[Node 50] Stored key=10 version=1 value="DataA"
-[Node 60] Stored key=20 version=1 value="DataB"
-[Node 30] Stored key=20 version=1 value="DataB"
-[Node 20] Stored key=10 version=1 value="DataA"
-[Node 40] Stored key=20 version=1 value="DataB"
-[Node 30] Stored key=10 version=1 value="DataA"
-[Node 40] Stored key=10 version=1 value="DataA"
-[Node 50] Stored key=20 version=1 value="DataB"
-[client1] Received WriteResponse for key=20 value="DataB" version=1
-[client1] Sending response to manager: WRITE 20 DataB success=true message=Write successful for key=20 version=1
-[TestManager] Received client response: WRITE 20 DataB success=true
-[TestManager] Pending client requests remain, batch not yet complete.
-[Node 10] Stored key=10 version=1 value="DataA"
-[Node 20] Stored key=20 version=1 value="DataB"
-[Node 10] Stored key=80 version=1 value="DataC"
-[client0] Received WriteResponse for key=10 value="DataA" version=1
-[Node 90] Stored key=80 version=1 value="DataC"
-[client0] Sending response to manager: WRITE 10 DataA success=true message=Write successful for key=10 version=1
-[TestManager] Received client response: WRITE 10 DataA success=true
-[TestManager] Pending client requests remain, batch not yet complete.
-[Node 0] Stored key=80 version=1 value="DataC"
-[Node 80] Stored key=80 version=1 value="DataC"
-[Node 20] Stored key=80 version=1 value="DataC"
-[client2] Received WriteResponse for key=80 value="DataC" version=1
-[client2] Sending response to manager: WRITE 80 DataC success=true message=Write successful for key=80 version=1
-[TestManager] Received client response: WRITE 80 DataC success=true
+[Node 0] Stored key=25 version=1 value="HelloWorld"
+[Node 30] Stored key=25 version=1 value="HelloWorld"
+[Node 40] Stored key=25 version=1 value="HelloWorld"
+[client0] Received WriteResponse for key=25 value="HelloWorld" version=1
+[client0] Sending response to manager: WRITE 25 HelloWorld success=true message=Write successful for key=25 version=1
+[TestManager] Received client response: WRITE 25 HelloWorld success=true
 [TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[client0] Sending ReadRequest key=10 to Node50
-[client1] Sending ReadRequest key=20 to Node20
-[client2] Sending ReadRequest key=80 to Node50
-[Node 50] Received ReadRequest for key=10
-[Node 20] Received ReadRequest for key=20
-[Node 50] Notifying node 10 for ReadRequest: key=10 client=client0
-[Node 20] Notifying node 20 for ReadRequest: key=20 client=client1
-[Node 50] Notifying node 20 for ReadRequest: key=10 client=client0
-[Node 20] Notifying node 30 for ReadRequest: key=20 client=client1
-[Node 50] Notifying node 30 for ReadRequest: key=10 client=client0
-[Node 20] Notifying node 40 for ReadRequest: key=20 client=client1
-[Node 50] Notifying node 40 for ReadRequest: key=10 client=client0
-[Node 50] Notifying node 50 for ReadRequest: key=10 client=client0
-[Node 20] Notifying node 50 for ReadRequest: key=20 client=client1
-[Node 50] Started read coordinator for key= (10 client0)
-[Node 20] Notifying node 60 for ReadRequest: key=20 client=client1
-[Node 50] Received ReadRequest for key=80
-[Node 20] Started read coordinator for key= (20 client1)
-[Node 50] Notifying node 80 for ReadRequest: key=80 client=client2
-[Node 50] Notifying node 90 for ReadRequest: key=80 client=client2
-[Node 50] Notifying node 0 for ReadRequest: key=80 client=client2
-[Node 50] Notifying node 10 for ReadRequest: key=80 client=client2
-[Node 50] Notifying node 20 for ReadRequest: key=80 client=client2
-[Node 50] Started read coordinator for key= (80 client2)
-[Node 40] Replied GetVersionRead for key=10 v=1
-[Node 10] Replied GetVersionRead for key=10 v=1
-[Node 50] Replied GetVersionRead for key=10 v=1
-[Node 90] Replied GetVersionRead for key=80 v=1
-[Node 20] Replied GetVersionRead for key=80 v=1
-[Node 80] Replied GetVersionRead for key=80 v=1
-[Node 30] Replied GetVersionRead for key=10 v=1
-[Node 50] Replied GetVersionRead for key=20 v=1
-[Node 60] Replied GetVersionRead for key=20 v=1
-[Node 0] Replied GetVersionRead for key=80 v=1
-[Node 20] Replied GetVersionRead for key=10 v=1
-[Node 40] Replied GetVersionRead for key=20 v=1
-[Node 30] Replied GetVersionRead for key=20 v=1
-[Node 10] Replied GetVersionRead for key=80 v=1
-[Node 20] Replied GetVersionRead for key=20 v=1
-[Node 50] (Read) GetVersionRead responses: 10=1
-[Node 20] (Read) GetVersionRead responses: 60=1
-[Node 50] (Read) GetVersionRead responses: 10=1, 40=1
-[Node 50] (Read) GetVersionRead responses: 90=1
-[Node 50] (Read) GetVersionRead responses: 80=1, 90=1
-[Node 50] (Read) GetVersionRead responses: 10=1, 20=1, 40=1
-[Node 50] (Read) Returning value v=1 to client
-[Node 50] (Read) GetVersionRead responses: 10=1, 80=1, 90=1
-[Node 50] (Read) Returning value v=1 to client
-[Node 20] (Read) GetVersionRead responses: 50=1, 60=1
-[Node 20] (Read) GetVersionRead responses: 40=1, 50=1, 60=1
-[Node 20] (Read) Returning value v=1 to client
-[client0] Received ReadResponse for key=10 value="DataA" version=1
-[client0] Sending response to manager: READ 10 success=true message=Value="DataA" version=1
-[TestManager] Received client response: READ 10 success=true
-[TestManager] Pending client requests remain, batch not yet complete.
-[client1] Received ReadResponse for key=20 value="DataB" version=1
-[client1] Sending response to manager: READ 20 success=true message=Value="DataB" version=1
-[TestManager] Received client response: READ 20 success=true
-[TestManager] Pending client requests remain, batch not yet complete.
-[client2] Received ReadResponse for key=80 value="DataC" version=1
-[client2] Sending response to manager: READ 80 success=true message=Value="DataC" version=1
-[TestManager] Received client response: READ 80 success=true
-[TestManager] Client request batch completed.
-[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] Node 0:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager] Node 10:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 20:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 30:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 40:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 50:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 60:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager] Node 70: (empty)
-[TestManager] Node 80:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager] Node 90:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager] 
-
-[TestManager] =====================
-[TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 10
-[TestManager] Crashed nodes: 0
-[TestManager] Active node IDs: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
-[TestManager] Client list: 3
-[TestManager] Clients: [client0, client1, client2]
-[TestManager] =====================
 [Main] 
-[Main] ============================================================
-[Main] ====           Multi-client test completed.              ====
-[Main] Summary:
-[Main]   - All concurrent client requests have been processed.
-[Main]   - System state is stable and ready for further tests.
-[Main] ============================================================
-
-[Main] [AUTO] Continuing without waiting for user input.
+[Main] Press ENTER to continue...
 [Main] 
-[Main] ============================================================
-[Main] ====  Crash-induced quorum timeout test                ====
-[Main] ============================================================
-[Main] Priming key=55 before inducing failures...
-[client0] Sending WriteRequest key=55, value="TimeoutBaseline" to Node10
-[Node 10] Received WriteRequest for key=55 value="TimeoutBaseline"
-[Node 10] Notifying node 60 for WriteRequest: key=55 value="TimeoutBaseline"
-[Node 10] Notifying node 70 for WriteRequest: key=55 value="TimeoutBaseline"
-[Node 10] Notifying node 80 for WriteRequest: key=55 value="TimeoutBaseline"
-[Node 10] Notifying node 90 for WriteRequest: key=55 value="TimeoutBaseline"
-[Node 10] Notifying node 0 for WriteRequest: key=55 value="TimeoutBaseline"
-[Node 10] (Write) GetVersionWrite responses: 90=0
-[Node 10] (Write) GetVersionWrite responses: 70=0, 90=0
-[Node 10] (Write) GetVersionWrite responses: 70=0, 80=0, 90=0
-[Node 10] (Write) GetVersionWrite responses: 0=0, 70=0, 80=0, 90=0
-[Node 10] Computed new version 1
-[Node 60] Stored key=55 version=1 value="TimeoutBaseline"
-[Node 90] Stored key=55 version=1 value="TimeoutBaseline"
-[Node 0] Stored key=55 version=1 value="TimeoutBaseline"
-[Node 70] Stored key=55 version=1 value="TimeoutBaseline"
-[Node 80] Stored key=55 version=1 value="TimeoutBaseline"
-[client0] Received WriteResponse for key=55 value="TimeoutBaseline" version=1
-[client0] Sending response to manager: WRITE 55 TimeoutBaseline success=true message=Write successful for key=55 version=1
-[TestManager] Received client response: WRITE 55 TimeoutBaseline success=true
-[TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] Crashing nodes 60 and 70 so only three replicas remain reachable for key 55...
-[Main]  -> Requesting crash of node 60
-[TestManager] CRASH completed: Node 60
-[Node 60] Crashing node
-[TestManager] CRASH completed: Node 60 crashed
-[TestManager] Node action batch completed.
-[Main]  -> Requesting crash of node 70
-[client2] Updated node list. Active targets: 9
-[client0] Updated node list. Active targets: 9
-[Node 70] Crashing node
-[client1] Updated node list. Active targets: 9
-[TestManager] CRASH completed: Node 70
-[TestManager] CRASH completed: Node 70 crashed
-[TestManager] Node action batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[client2] Updated node list. Active targets: 8
-[client1] Updated node list. Active targets: 8
-[client0] Updated node list. Active targets: 8
-[Main] Attempting write expected to fail (W quorum broken)...
-[client1] Sending WriteRequest key=55, value="TimeoutAfterCrash" to Node0
-[Node 0] Received WriteRequest for key=55 value="TimeoutAfterCrash"
-[Node 0] Notifying node 60 for WriteRequest: key=55 value="TimeoutAfterCrash"
-[Node 0] Notifying node 70 for WriteRequest: key=55 value="TimeoutAfterCrash"
-[Node 0] Notifying node 80 for WriteRequest: key=55 value="TimeoutAfterCrash"
-[Node 0] Notifying node 90 for WriteRequest: key=55 value="TimeoutAfterCrash"
-[Node 0] Notifying node 0 for WriteRequest: key=55 value="TimeoutAfterCrash"
-[Node 0] (Write) GetVersionWrite responses: 0=1
-[Node 0] (Write) GetVersionWrite responses: 0=1, 90=1
-[Node 0] (Write) GetVersionWrite responses: 0=1, 80=1, 90=1
-[Node 0] WriteTimeout: Write quorum W=4 not reached for key 55 (client=client1)
-[client1] Sending response to manager: WRITE 55 TimeoutAfterCrash success=false message=Operation failed: Write quorum W=4 not reached for key 55 (client=client1)
-[TestManager] Received client response: WRITE 55 TimeoutAfterCrash success=false
-[TestManager] Client request batch completed.
-[Main] Performing read to verify the system still responds with minimal quorum...
-[client2] Sending ReadRequest key=55 to Node30
-[Node 30] Received ReadRequest for key=55
-[Node 30] Notifying node 60 for ReadRequest: key=55 client=client2
-[Node 30] Notifying node 70 for ReadRequest: key=55 client=client2
-[Node 30] Notifying node 80 for ReadRequest: key=55 client=client2
-[Node 30] Notifying node 90 for ReadRequest: key=55 client=client2
-[Node 30] Notifying node 0 for ReadRequest: key=55 client=client2
-[Node 30] Started read coordinator for key= (55 client2)
-[Node 0] Replied GetVersionRead for key=55 v=1
-[Node 90] Rejected GetVersionRead for key=55 due to ongoing write
-[Node 80] Rejected GetVersionRead for key=55 due to ongoing write
-[Node 30] (Read) GetVersionRead responses: 0=1
-[Node 30] Ignored VersionReadResponse for key=55 due to ongoing write
-[Node 30] Ignored VersionReadResponse for key=55 due to ongoing write
-[Node 30] ReadTimeout: Read quorum R=3 not reached for key 55 (requester=client2)
-[client2] Sending response to manager: READ 55 success=false message=Timeout waiting for response.
-[TestManager] Received client response: READ 55 success=false
-[TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] Recovering nodes 60 and 70 to restore full replication...
-[Main]  -> Requesting recovery of node 60
-[TestManager] RECOVER completed: Node 60
-[Node 60] Starting RECOVERY via testManager
-[Node 60] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
-[Node 60] RECOVER: requesting items from successor 70
-[Node 60] RECOVER: requesting items from predecessor 50
-[Node 60] Timeout armed for RECOVERING: waiting data transfer from successor 70, predecessor 50
-[Node 50] IDLE: sending 1 items to 60
-[Node 60] Timeout armed for RECOVERING: waiting data transfer from successor 70
-[Node 60] RECOVER: waiting for more responses (1/2)
-[TestManager] Node action batch completed.
-[Main]  -> Requesting recovery of node 70
-[TestManager] RECOVER completed: Node 70
-[Node 70] Starting RECOVERY via testManager
-[Node 70] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
-[Node 70] RECOVER: requesting items from successor 80
-[Node 70] RECOVER: requesting items from predecessor 60
-[Node 70] Timeout armed for RECOVERING: waiting data transfer from successor 80, predecessor 60
-[Node 80] IDLE: sending 1 items to 70
-[Node 70] Timeout armed for RECOVERING: waiting data transfer from predecessor 60
-[Node 70] RECOVER: waiting for more responses (1/2)
-[TestManager] Node action batch completed.
-[TestManager] 
-
-[TestManager] =====================
-[TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 8
-[TestManager] Crashed nodes: 2
-[TestManager] Active node IDs: [0, 10, 20, 30, 40, 50, 80, 90]
-[TestManager] Crashed node IDs: [60, 70]
-[TestManager] Client list: 3
-[TestManager] Clients: [client0, client1, client2]
-[TestManager] =====================
-[Main] ============================================================
-[Main] ====  Crash-induced quorum timeout test completed.     ====
-[Main] ============================================================
-
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] 
-[Main] ============================================================
-[Main] ====        Starting node join/leave test              ====
-[Main] ============================================================
-[Main] Current system status before join/leave:
-[TestManager] 
-
-[TestManager] =====================
-[TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 8
-[TestManager] Crashed nodes: 2
-[TestManager] Active node IDs: [0, 10, 20, 30, 40, 50, 80, 90]
-[TestManager] Crashed node IDs: [60, 70]
-[TestManager] Client list: 3
-[TestManager] Clients: [client0, client1, client2]
-[TestManager] =====================
-[Main] Testing operations before JOIN...
-[client0] Sending WriteRequest key=57, value="BeforeJoin" to Node30
-[Node 30] Received WriteRequest for key=57 value="BeforeJoin"
-[Node 30] Notifying node 60 for WriteRequest: key=57 value="BeforeJoin"
-[Node 30] Notifying node 70 for WriteRequest: key=57 value="BeforeJoin"
-[Node 30] Notifying node 80 for WriteRequest: key=57 value="BeforeJoin"
-[Node 30] Notifying node 90 for WriteRequest: key=57 value="BeforeJoin"
-[Node 30] Notifying node 0 for WriteRequest: key=57 value="BeforeJoin"
-[Node 30] (Write) GetVersionWrite responses: 80=0
-[Node 30] (Write) GetVersionWrite responses: 80=0, 90=0
-[Node 30] (Write) GetVersionWrite responses: 0=0, 80=0, 90=0
-[Node 30] WriteTimeout: Write quorum W=4 not reached for key 57 (client=client0)
-[client0] Sending response to manager: WRITE 57 BeforeJoin success=false message=Operation failed: Write quorum W=4 not reached for key 57 (client=client0)
-[TestManager] Received client response: WRITE 57 BeforeJoin success=false
-[TestManager] Client request batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] Node 0:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 10:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 20:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 30:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 40:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 50:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 80:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 90:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] Adding new node (JOIN)...
-[TestManager] JOIN completed: Node 55 joined the system
-[Node 55] Timeout armed for JOINING: waiting bootstrap peer response for JOIN
-[Node 55] JOIN: requesting items from 60
-[Node 55] Timeout armed for JOINING: waiting data transfer from successor 60
-[TestManager] Node action batch completed.
-[Main] [AUTO] Continuing without waiting for user input.
-[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] Node 0:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 10:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 20:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 30:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 40:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 50:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 80:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 90:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[Main] [AUTO] Continuing without waiting for user input.
-[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] Node 0:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 10:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 20:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 30:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 40:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 50:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 80:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 90:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] 
-
-[TestManager] =====================
-[TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 8
-[TestManager] Crashed nodes: 2
-[TestManager] Active node IDs: [0, 10, 20, 30, 40, 50, 80, 90]
-[TestManager] Crashed node IDs: [60, 70]
-[TestManager] Client list: 3
-[TestManager] Clients: [client0, client1, client2]
-[TestManager] =====================
-[Main] 
-============================================================
-[Main] ====           Join/Leave test completed.              ====
-[Main] Summary:
-[Main]   - Node JOIN and LEAVE operations completed successfully.
-[Main]   - System state is stable and ready for further tests.
-[Main] ============================================================
-
-[Main] [AUTO] Continuing without waiting for user input.
-[Main] 
-[Main] ============================================================
-[Main] ====        Starting node Crash/Recovery test           ====
-[Main] ============================================================
-[Main] Storing initial data...
-[client0] Sending WriteRequest key=1000, value="InitialData" to Node50
-[Node 50] Received WriteRequest for key=1000 value="InitialData"
-[Node 50] Notifying node 0 for WriteRequest: key=1000 value="InitialData"
-[Node 50] Notifying node 10 for WriteRequest: key=1000 value="InitialData"
-[Node 50] Notifying node 20 for WriteRequest: key=1000 value="InitialData"
-[Node 50] Notifying node 30 for WriteRequest: key=1000 value="InitialData"
-[Node 50] Notifying node 40 for WriteRequest: key=1000 value="InitialData"
-[Node 50] (Write) GetVersionWrite responses: 10=0
-[Node 50] (Write) GetVersionWrite responses: 0=0, 10=0
-[Node 50] (Write) GetVersionWrite responses: 0=0, 10=0, 20=0
-[Node 50] (Write) GetVersionWrite responses: 0=0, 10=0, 20=0, 40=0
-[Node 50] Computed new version 1
-[Node 30] Stored key=1000 version=1 value="InitialData"
-[client0] Received WriteResponse for key=1000 value="InitialData" version=1
-[Node 0] Stored key=1000 version=1 value="InitialData"
-[client0] Sending response to manager: WRITE 1000 InitialData success=true message=Write successful for key=1000 version=1
-[TestManager] Received client response: WRITE 1000 InitialData success=true
-[TestManager] Client request batch completed.
-[Main] Crashing a node...
-[TestManager] CRASH completed: Node 20
-[Node 20] Crashing node
-[TestManager] CRASH completed: Node 20 crashed
-[TestManager] Node action batch completed.
-[Main] Current system status after crash:
-[client1] Updated node list. Active targets: 7
-[client0] Updated node list. Active targets: 7
-[client2] Updated node list. Active targets: 7
-[TestManager] 
-
-[TestManager] =====================
-[TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 7
-[TestManager] Crashed nodes: 3
-[TestManager] Active node IDs: [0, 10, 30, 40, 50, 80, 90]
-[TestManager] Crashed node IDs: [60, 70, 20]
-[TestManager] Client list: 3
-[TestManager] Clients: [client0, client1, client2]
-[TestManager] =====================
-[Node 10] Stored key=1000 version=1 value="InitialData"
-[Node 40] Stored key=1000 version=1 value="InitialData"
-[Main] Continuing operations while node is crashed...
-[client0] Sending WriteRequest key=1001, value="DuringCrash1" to Node30
-[Node 30] Received WriteRequest for key=1001 value="DuringCrash1"
-[Node 30] Notifying node 0 for WriteRequest: key=1001 value="DuringCrash1"
-[Node 30] Notifying node 10 for WriteRequest: key=1001 value="DuringCrash1"
-[Node 30] Notifying node 20 for WriteRequest: key=1001 value="DuringCrash1"
-[Node 30] Notifying node 30 for WriteRequest: key=1001 value="DuringCrash1"
-[Node 30] Notifying node 40 for WriteRequest: key=1001 value="DuringCrash1"
-[Node 30] (Write) GetVersionWrite responses: 30=0
-[Node 30] (Write) GetVersionWrite responses: 0=0, 30=0
-[Node 30] (Write) GetVersionWrite responses: 0=0, 30=0, 40=0
-[Node 30] (Write) GetVersionWrite responses: 0=0, 10=0, 30=0, 40=0
-[Node 30] Computed new version 1
-[client0] Received WriteResponse for key=1001 value="DuringCrash1" version=1
-[Node 10] Stored key=1001 version=1 value="DuringCrash1"
-[client0] Sending response to manager: WRITE 1001 DuringCrash1 success=true message=Write successful for key=1001 version=1
-[TestManager] Received client response: WRITE 1001 DuringCrash1 success=true
-[TestManager] Client request batch completed.
-[client0] Sending WriteRequest key=1002, value="DuringCrash2" to Node90
-[Node 90] Received WriteRequest for key=1002 value="DuringCrash2"
-[Node 90] Notifying node 0 for WriteRequest: key=1002 value="DuringCrash2"
-[Node 90] Notifying node 10 for WriteRequest: key=1002 value="DuringCrash2"
-[Node 90] Notifying node 20 for WriteRequest: key=1002 value="DuringCrash2"
-[Node 90] Notifying node 30 for WriteRequest: key=1002 value="DuringCrash2"
-[Node 90] Notifying node 40 for WriteRequest: key=1002 value="DuringCrash2"
-[Node 40] Stored key=1001 version=1 value="DuringCrash1"
-[Node 0] Stored key=1001 version=1 value="DuringCrash1"
-[Node 30] Stored key=1001 version=1 value="DuringCrash1"
-[Node 90] (Write) GetVersionWrite responses: 10=0
-[Node 90] (Write) GetVersionWrite responses: 10=0, 30=0
-[Node 90] (Write) GetVersionWrite responses: 0=0, 10=0, 30=0
-[Node 90] (Write) GetVersionWrite responses: 0=0, 10=0, 30=0, 40=0
-[Node 90] Computed new version 1
-[Node 10] Stored key=1002 version=1 value="DuringCrash2"
-[client0] Received WriteResponse for key=1002 value="DuringCrash2" version=1
-[client0] Sending response to manager: WRITE 1002 DuringCrash2 success=true message=Write successful for key=1002 version=1
-[Node 40] Stored key=1002 version=1 value="DuringCrash2"
-[TestManager] Received client response: WRITE 1002 DuringCrash2 success=true
-[TestManager] Client request batch completed.
-[client0] Sending ReadRequest key=1000 to Node90
-[Node 90] Received ReadRequest for key=1000
-[Node 90] Notifying node 0 for ReadRequest: key=1000 client=client0
-[Node 90] Notifying node 10 for ReadRequest: key=1000 client=client0
-[Node 90] Notifying node 20 for ReadRequest: key=1000 client=client0
-[Node 90] Notifying node 30 for ReadRequest: key=1000 client=client0
-[Node 90] Notifying node 40 for ReadRequest: key=1000 client=client0
-[Node 90] Started read coordinator for key= (1000 client0)
-[Node 30] Stored key=1002 version=1 value="DuringCrash2"
-[Node 0] Stored key=1002 version=1 value="DuringCrash2"
-[Node 40] Replied GetVersionRead for key=1000 v=1
-[Node 30] Replied GetVersionRead for key=1000 v=1
-[Node 10] Replied GetVersionRead for key=1000 v=1
-[Node 0] Replied GetVersionRead for key=1000 v=1
-[Node 90] (Read) GetVersionRead responses: 10=1
-[Node 90] (Read) GetVersionRead responses: 10=1, 30=1
-[Node 90] (Read) GetVersionRead responses: 10=1, 30=1, 40=1
-[Node 90] (Read) Returning value v=1 to client
-[client0] Received ReadResponse for key=1000 value="InitialData" version=1
-[client0] Sending response to manager: READ 1000 success=true message=Value="InitialData" version=1
-[TestManager] Received client response: READ 1000 success=true
-[TestManager] Client request batch completed.
-[Main] Recovering the crashed node...
-[TestManager] RECOVER completed: Node 20
-[Node 20] Starting RECOVERY via testManager
-[Node 20] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
-[Node 20] RECOVER: requesting items from successor 30
-[Node 20] RECOVER: requesting items from predecessor 10
-[Node 20] Timeout armed for RECOVERING: waiting data transfer from successor 30, predecessor 10
-[Node 30] IDLE: sending 5 items to 20
-[Node 10] IDLE: sending 5 items to 20
-[Node 20] Timeout armed for RECOVERING: waiting data transfer from predecessor 10
-[Node 20] RECOVER: waiting for more responses (1/2)
-[Node 20] Timeout armed for RECOVERING: waiting maintenance reads quorum for 6 keys
-22:11:35.138 [MarsSystem-akka.actor.default-dispatcher-11] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [1] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-[Node 0] Replied GetVersionRead for key=80 v=1
-[Node 40] Replied GetVersionRead for key=1002 v=1
-[Node 80] Replied GetVersionRead for key=80 v=1
-[Node 30] Replied GetVersionRead for key=1002 v=1
-[Node 50] Replied GetVersionRead for key=20 v=1
-[Node 30] Replied GetVersionRead for key=20 v=1
-[Node 40] Replied GetVersionRead for key=20 v=1
-[Node 40] Replied GetVersionRead for key=1001 v=1
-22:11:35.149 [MarsSystem-akka.actor.default-dispatcher-6] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [2] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-[Node 90] Replied GetVersionRead for key=80 v=1
-[Node 10] Replied GetVersionRead for key=1002 v=1
-[Node 0] Replied GetVersionRead for key=1000 v=1
-[Node 30] Replied GetVersionRead for key=1000 v=1
-[Node 0] Replied GetVersionRead for key=1002 v=1
-[Node 40] Replied GetVersionRead for key=10 v=1
-22:11:35.160 [MarsSystem-akka.actor.default-dispatcher-7] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [3] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-[Node 30] Replied GetVersionRead for key=1001 v=1
-[Node 10] Replied GetVersionRead for key=80 v=1
-[Node 0] Replied GetVersionRead for key=1001 v=1
-[Node 10] Replied GetVersionRead for key=10 v=1
-[Node 20] (Read) GetVersionRead responses: 80=1
-22:11:35.175 [MarsSystem-akka.actor.default-dispatcher-7] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [4] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-22:11:35.175 [MarsSystem-akka.actor.default-dispatcher-7] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [5] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-[Node 10] Replied GetVersionRead for key=1000 v=1
-[Node 10] Replied GetVersionRead for key=1001 v=1
-[Node 30] Replied GetVersionRead for key=10 v=1
-[Node 40] Replied GetVersionRead for key=1000 v=1
-[Node 50] Replied GetVersionRead for key=10 v=1
-[Node 20] (Read) GetVersionRead responses: 40=1
-22:11:35.179 [MarsSystem-akka.actor.default-dispatcher-10] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node20#86754262] to Actor[akka://MarsSystem/user/Node20#86754262] was unhandled. [6] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
-[Node 20] (Read) GetVersionRead responses: 30=1, 40=1
-[Node 20] (Read) GetVersionRead responses: 10=1
-[Node 20] (Read) GetVersionRead responses: 50=1
-[Node 20] (Read) GetVersionRead responses: 30=1, 50=1
-[Node 20] (Read) GetVersionRead responses: 40=1
-[Node 20] (Read) GetVersionRead responses: 80=1, 90=1
-[Node 20] (Read) GetVersionRead responses: 10=1, 80=1, 90=1
-[Node 20] (Read) GetVersionRead responses: 30=1, 40=1, 50=1
+[Main] Retrieving key=25...
+[client0] Sending ReadRequest key=25 to Node20
+[Node 20] Received ReadRequest for key=25
+[Node 20] Notifying node 30 for ReadRequest: key=25 client=client0
+[Node 20] Notifying node 40 for ReadRequest: key=25 client=client0
+[Node 20] Notifying node 0 for ReadRequest: key=25 client=client0
+[Node 20] Started read coordinator for key= (25 client0)
+[Node 0] Replied GetVersionRead for key=25 v=1
+[Node 30] Replied GetVersionRead for key=25 v=1
+[Node 40] Replied GetVersionRead for key=25 v=1
 [Node 20] (Read) GetVersionRead responses: 0=1
-[Node 20] (Read) GetVersionRead responses: 30=1, 40=1
-[Node 20] (Read) GetVersionRead responses: 10=1, 30=1, 40=1
-[Node 20] (Read) GetVersionRead responses: 10=1, 30=1
-[Node 20] (Read) GetVersionRead responses: 0=1, 40=1
-[Node 20] (Read) GetVersionRead responses: 10=1, 30=1, 50=1
-[Node 20] (Read) GetVersionRead responses: 0=1, 30=1, 40=1
-[Node 20] (Read) GetVersionRead responses: 0=1, 30=1, 40=1
-[Node 20] RECOVERY completed (maintenance done) and serving.
-[TestManager] RECOVER completed: Node 20 recovered
+[Node 20] (Read) GetVersionRead responses: 0=1, 30=1
+[Node 20] (Read) Returning value v=1 to client
+[client0] Received ReadResponse for key=25 value="HelloWorld" version=1
+[client0] Sending response to manager: READ 25 success=true message=Value="HelloWorld" version=1
+[TestManager] Received client response: READ 25 success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10: (empty)
+[TestManager] Node 20: (empty)
+[TestManager] Node 30:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 10, 20, 30, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====         Single-client basic test completed.        ====
+[Main] Summary:
+[Main]   - Basic Write and Read operations verified.
+[Main]   - Data consistency maintained across operations.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====              Starting node JOIN test                ====
+[Main] ============================================================
+[Main] Adding new node27 (JOIN)...
+[TestManager] JOIN completed: Node 27 joined the system
+[Node 27] Timeout armed for JOINING: waiting bootstrap peer response for JOIN
+[Node 27] JOIN: requesting items from 30
+[Node 27] Timeout armed for JOINING: waiting data transfer from successor 30
+[Node 30] IDLE: sending 1 items to null
+[Node 27] Timeout armed for JOINING: waiting maintenance reads quorum for 1 keys
+[Node 30] Replied GetVersionRead for key=25 v=1
+[Node 40] Replied GetVersionRead for key=25 v=1
+[Node 0] Replied GetVersionRead for key=25 v=1
+[Node 27] (Read) GetVersionRead responses: 30=1
+[Node 27] (Read) GetVersionRead responses: 0=1, 30=1
+[Node 27] JOIN completed (maintenance done) and serving.
+[TestManager] JOIN completed: Node 27 joined the system
 [TestManager] Action detail: Maintenance completed
 [TestManager] Node action batch completed.
-[client0] Updated node list. Active targets: 8
-[client1] Updated node list. Active targets: 8
-[client2] Updated node list. Active targets: 8
-[Main] Testing data consistency after recovery...
-[client0] Sending ReadRequest key=1000 to Node0
-[Node 0] Received ReadRequest for key=1000
-[Node 0] Notifying node 0 for ReadRequest: key=1000 client=client0
-[Node 0] Notifying node 10 for ReadRequest: key=1000 client=client0
-[Node 0] Notifying node 20 for ReadRequest: key=1000 client=client0
-[Node 0] Notifying node 30 for ReadRequest: key=1000 client=client0
-[Node 0] Notifying node 40 for ReadRequest: key=1000 client=client0
-[Node 0] Started read coordinator for key= (1000 client0)
-[Node 40] Replied GetVersionRead for key=1000 v=1
-[Node 10] Replied GetVersionRead for key=1000 v=1
-[Node 20] Rejected GetVersionRead for key=1000 due to ongoing write
-[Node 0] Replied GetVersionRead for key=1000 v=1
-[Node 30] Replied GetVersionRead for key=1000 v=1
-[Node 0] Ignored VersionReadResponse for key=1000 due to ongoing write
-[Node 0] (Read) GetVersionRead responses: 10=1
-[Node 0] (Read) GetVersionRead responses: 10=1, 40=1
-[Node 0] (Read) GetVersionRead responses: 10=1, 30=1, 40=1
-[Node 0] (Read) Returning value v=1 to client
-[client0] Received ReadResponse for key=1000 value="InitialData" version=1
-[client0] Sending response to manager: READ 1000 success=true message=Value="InitialData" version=1
-[TestManager] Received client response: READ 1000 success=true
-[TestManager] Client request batch completed.
-[client0] Sending ReadRequest key=1001 to Node80
-[Node 80] Received ReadRequest for key=1001
-[Node 80] Notifying node 0 for ReadRequest: key=1001 client=client0
-[Node 80] Notifying node 10 for ReadRequest: key=1001 client=client0
-[Node 80] Notifying node 20 for ReadRequest: key=1001 client=client0
-[Node 80] Notifying node 30 for ReadRequest: key=1001 client=client0
-[Node 80] Notifying node 40 for ReadRequest: key=1001 client=client0
-[Node 80] Started read coordinator for key= (1001 client0)
-[Node 40] Replied GetVersionRead for key=1001 v=1
-[Node 0] Replied GetVersionRead for key=1001 v=1
-[Node 20] Replied GetVersionRead for key=1001 v=1
-[Node 30] Replied GetVersionRead for key=1001 v=1
-[Node 10] Replied GetVersionRead for key=1001 v=1
-[Node 80] (Read) GetVersionRead responses: 30=1
-[Node 80] (Read) GetVersionRead responses: 0=1, 30=1
-[Node 80] (Read) GetVersionRead responses: 0=1, 20=1, 30=1
-[Node 80] (Read) Returning value v=1 to client
-[client0] Received ReadResponse for key=1001 value="DuringCrash1" version=1
-[client0] Sending response to manager: READ 1001 success=true message=Value="DuringCrash1" version=1
-[TestManager] Received client response: READ 1001 success=true
-[TestManager] Client request batch completed.
-[client0] Sending ReadRequest key=1002 to Node80
-[Node 80] Received ReadRequest for key=1002
-[Node 80] Notifying node 0 for ReadRequest: key=1002 client=client0
-[Node 80] Notifying node 10 for ReadRequest: key=1002 client=client0
-[Node 80] Notifying node 20 for ReadRequest: key=1002 client=client0
-[Node 80] Notifying node 30 for ReadRequest: key=1002 client=client0
-[Node 80] Notifying node 40 for ReadRequest: key=1002 client=client0
-[Node 80] Started read coordinator for key= (1002 client0)
-[Node 40] Replied GetVersionRead for key=1002 v=1
-[Node 20] Replied GetVersionRead for key=1002 v=1
-[Node 10] Replied GetVersionRead for key=1002 v=1
-[Node 0] Replied GetVersionRead for key=1002 v=1
-[Node 30] Replied GetVersionRead for key=1002 v=1
-[Node 80] (Read) GetVersionRead responses: 40=1
-[Node 80] (Read) GetVersionRead responses: 20=1, 40=1
-[Node 80] (Read) GetVersionRead responses: 10=1, 20=1, 40=1
-[Node 80] (Read) Returning value v=1 to client
-[client0] Received ReadResponse for key=1002 value="DuringCrash2" version=1
-[client0] Sending response to manager: READ 1002 success=true message=Value="DuringCrash2" version=1
-[TestManager] Received client response: READ 1002 success=true
-[TestManager] Client request batch completed.
-[Main] Adding more data after recovery...
-[client0] Sending WriteRequest key=1003, value="AfterRecovery" to Node90
-[Node 90] Received WriteRequest for key=1003 value="AfterRecovery"
-[Node 90] Notifying node 0 for WriteRequest: key=1003 value="AfterRecovery"
-[Node 90] Notifying node 10 for WriteRequest: key=1003 value="AfterRecovery"
-[Node 90] Notifying node 20 for WriteRequest: key=1003 value="AfterRecovery"
-[Node 90] Notifying node 30 for WriteRequest: key=1003 value="AfterRecovery"
-[Node 90] Notifying node 40 for WriteRequest: key=1003 value="AfterRecovery"
-[Node 90] (Write) GetVersionWrite responses: 30=0
-[Node 90] (Write) GetVersionWrite responses: 30=0, 40=0
-[Node 90] (Write) GetVersionWrite responses: 10=0, 30=0, 40=0
-[Node 90] (Write) GetVersionWrite responses: 0=0, 10=0, 30=0, 40=0
-[Node 90] Computed new version 1
-[Node 10] Stored key=1003 version=1 value="AfterRecovery"
-[client0] Received WriteResponse for key=1003 value="AfterRecovery" version=1
-[Node 40] Stored key=1003 version=1 value="AfterRecovery"
-[client0] Sending response to manager: WRITE 1003 AfterRecovery success=true message=Write successful for key=1003 version=1
-[TestManager] Received client response: WRITE 1003 AfterRecovery success=true
-[TestManager] Client request batch completed.
-[Node 30] Stored key=1003 version=1 value="AfterRecovery"
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[client1] Updated node list. Active targets: 6
+[client0] Updated node list. Active targets: 6
+[client2] Updated node list. Active targets: 6
+[Node 30] AnnounceJoin: added 27 with backfill
+[Node 10] AnnounceJoin: added 27 with backfill
+[Node 40] AnnounceJoin: added 27 with backfill
+[Node 20] AnnounceJoin: added 27 with backfill
+[Node 0] Pruned key=25 (no longer responsible)
+[Node 0] AnnounceJoin: added 27 with backfill
+[TestManager] 
+
 [TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[Node 0] Stored key=1003 version=1 value="AfterRecovery"
-[Node 20] Stored key=1003 version=1 value="AfterRecovery"
 [TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
-[TestManager] Node 0:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager]   Key: 1000 -> Value: "InitialData" (v1)
-[TestManager]   Key: 1001 -> Value: "DuringCrash1" (v1)
-[TestManager]   Key: 1002 -> Value: "DuringCrash2" (v1)
-[TestManager] Node 10:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 1000 -> Value: "InitialData" (v1)
-[TestManager]   Key: 1001 -> Value: "DuringCrash1" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager]   Key: 1002 -> Value: "DuringCrash2" (v1)
-[TestManager]   Key: 1003 -> Value: "AfterRecovery" (v1)
-[TestManager] Node 20:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 1000 -> Value: "InitialData" (v1)
-[TestManager]   Key: 1001 -> Value: "DuringCrash1" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager]   Key: 1002 -> Value: "DuringCrash2" (v1)
+[TestManager] Node 0: (empty)
+[TestManager] Node 10: (empty)
+[TestManager] Node 20: (empty)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
 [TestManager] Node 30:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 1000 -> Value: "InitialData" (v1)
-[TestManager]   Key: 1001 -> Value: "DuringCrash1" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager]   Key: 1002 -> Value: "DuringCrash2" (v1)
-[TestManager]   Key: 1003 -> Value: "AfterRecovery" (v1)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
 [TestManager] Node 40:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 1000 -> Value: "InitialData" (v1)
-[TestManager]   Key: 1001 -> Value: "DuringCrash1" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager]   Key: 1002 -> Value: "DuringCrash2" (v1)
-[TestManager]   Key: 1003 -> Value: "AfterRecovery" (v1)
-[TestManager] Node 50:
-[TestManager]   Key: 20 -> Value: "DataB" (v1)
-[TestManager]   Key: 10 -> Value: "DataA" (v1)
-[TestManager] Node 80:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
-[TestManager] Node 90:
-[TestManager]   Key: 80 -> Value: "DataC" (v1)
-[TestManager]   Key: 55 -> Value: "TimeoutBaseline" (v1)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
 [TestManager] 
 
 [TestManager] =====================
 [TestManager] === SYSTEM STATUS ===
-[TestManager] Active nodes: 8
-[TestManager] Crashed nodes: 2
-[TestManager] Active node IDs: [0, 10, 30, 40, 50, 80, 90, 20]
-[TestManager] Crashed node IDs: [60, 70]
+[TestManager] Active nodes: 6
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 10, 20, 30, 40, 27]
 [TestManager] Client list: 3
 [TestManager] Clients: [client0, client1, client2]
 [TestManager] =====================
 [Main] 
 ============================================================
-[Main] ====         Crash/Recovery test completed.            ====
+[Main] ====               Node JOIN test completed.            ====
+[Main] Summary:
+[Main]   - Node JOIN operation completed successfully.
+[Main]   - System state is stable and ready for further tests.
 [Main] ============================================================
 
-[Main] Summary:
-[Main]   - Node CRASH and RECOVERY operations completed successfully.
-[Main]   - Data consistency verified after recovery.
-[Main]   - System state is stable and ready for further tests.
-[Main] ------------------------------------------------------------
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====              Starting node LEAVE test               ====
+[Main] ============================================================
+[Main] Removing node30 (LEAVE)...
+[Node 30] Received leave request
+[TestManager] LEAVE completed: Node 30
+[Node 30] TransferData to successor and leaving network
+[TestManager] LEAVE completed: Node 30 left the system
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] Node action batch completed.
+[client1] Updated node list. Active targets: 5
+[client2] Updated node list. Active targets: 5
+[client0] Updated node list. Active targets: 5
+[Node 40] Received transfer key=25 v=1
+[Node 27] Received transfer key=25 v=1
+[Node 40] AnnounceLeave: removed null
+[Node 10] AnnounceLeave: removed null
+[Node 0] Received transfer key=25 v=1
+[Node 0] AnnounceLeave: removed null
+[Node 20] AnnounceLeave: removed null
+[Node 27] AnnounceLeave: removed null
+[TestManager] 
 
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10: (empty)
+[TestManager] Node 20: (empty)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 10, 20, 40, 27]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+============================================================
+[Main] ====               Node LEAVE test completed.           ====
+[Main] Summary:
+[Main]   - Node LEAVE operation completed successfully.
+[Main]   - System state is stable and ready for further tests.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====             Starting node CRASH test                ====
+[Main] ============================================================
+[Main] Crashing node40...
+[TestManager] CRASH completed: Node 40
+[Node 40] Crashing node
+[TestManager] CRASH completed: Node 40 crashed
+[TestManager] Node action batch completed.
+[client1] Updated node list. Active targets: 4
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[client0] Updated node list. Active targets: 4
+[client2] Updated node list. Active targets: 4
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10: (empty)
+[TestManager] Node 20: (empty)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 4
+[TestManager] Crashed nodes: 1
+[TestManager] Active node IDs: [0, 10, 20, 27]
+[TestManager] Crashed node IDs: [40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+============================================================
+[Main] ====              Node CRASH test completed.            ====
+[Main] Summary:
+[Main]   - Node CRASH operation completed successfully.
+[Main]   - System state is stable and ready for further tests.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====           Starting node RECOVER test               ====
+[Main] ============================================================
+[Main] Recovering node40...
+[TestManager] RECOVER completed: Node 40
+[Node 40] Starting RECOVERY via testManager
+[Node 40] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
+[Node 40] RECOVER: requesting items from successor 0
+[Node 40] RECOVER: requesting items from predecessor 27
+[Node 40] Timeout armed for RECOVERING: waiting data transfer from successor 0, predecessor 27
+[Node 27] IDLE: sending 1 items to 40
+[Node 0] IDLE: sending 1 items to 40
+[Node 40] Timeout armed for RECOVERING: waiting data transfer from successor 0
+[Node 40] RECOVER: waiting for more responses (1/2)
+[Node 40] Timeout armed for RECOVERING: waiting maintenance reads quorum for 1 keys
+[Node 27] Replied GetVersionRead for key=25 v=1
+17:32:19.904 [MarsSystem-akka.actor.default-dispatcher-8] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node40#-815806250] to Actor[akka://MarsSystem/user/Node40#-815806250] was unhandled. [1] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
+[Node 0] Replied GetVersionRead for key=25 v=1
+[Node 40] (Read) GetVersionRead responses: 27=1
+[Node 40] (Read) GetVersionRead responses: 0=1, 27=1
+[Node 40] RECOVERY completed (maintenance done) and serving.
+[TestManager] RECOVER completed: Node 40 recovered
+[TestManager] Action detail: Maintenance completed
+[client0] Updated node list. Active targets: 5
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] Node action batch completed.
+[client2] Updated node list. Active targets: 5
+[client1] Updated node list. Active targets: 5
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10: (empty)
+[TestManager] Node 20: (empty)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 10, 20, 27, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+============================================================
+[Main] ====             Node RECOVER test completed.          ====
+[Main] Summary:
+[Main]   - Node RECOVER operation completed successfully.
+[Main]   - System state is stable and ready for further tests.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====     Starting Sequential Consistency test           ====
+[Main] ============================================================
+[Main] Client2 writing key=65, value='First' asking node20...
+[client2] Sending WriteRequest key=65, value="First" to Node20
+[Node 20] Received WriteRequest for key=65 value="First"
+[Node 20] Notifying node 0 for WriteRequest: key=65 value="First"
+[Node 20] Notifying node 10 for WriteRequest: key=65 value="First"
+[Node 20] Notifying node 20 for WriteRequest: key=65 value="First"
+[Node 20] (Write) GetVersionWrite responses: 20=0
+[Node 20] (Write) GetVersionWrite responses: 10=0, 20=0
+[Node 20] Computed new version 1
+[Node 10] Stored key=65 version=1 value="First"
+[Node 0] Stored key=65 version=1 value="First"
+[client2] Received WriteResponse for key=65 value="First" version=1
+[client2] Sending response to manager: WRITE 65 First success=true message=Write successful for key=65 version=1
+[TestManager] Received client response: WRITE 65 First success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Node 20] Stored key=65 version=1 value="First"
+[Main] Client0 writes key=65, value='Second' asking node27...
+[client0] Sending WriteRequest key=65, value="Second" to Node27
+[Node 27] Received WriteRequest for key=65 value="Second"
+[Node 27] Notifying node 0 for WriteRequest: key=65 value="Second"
+[Node 27] Notifying node 10 for WriteRequest: key=65 value="Second"
+[Node 27] Notifying node 20 for WriteRequest: key=65 value="Second"
+[Node 27] (Write) GetVersionWrite responses: 10=1
+[Node 27] (Write) GetVersionWrite responses: 0=1, 10=1
+[Node 27] Computed new version 2
+[Node 20] Stored key=65 version=2 value="Second"
+[Node 0] Stored key=65 version=2 value="Second"
+[Node 10] Stored key=65 version=2 value="Second"
+[client0] Received WriteResponse for key=65 value="Second" version=2
+[client0] Sending response to manager: WRITE 65 Second success=true message=Write successful for key=65 version=2
+[TestManager] Received client response: WRITE 65 Second success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Client1 reads key=65 (should see 'Second') asking node 40...
+[client1] Sending ReadRequest key=65 to Node40
+[Node 40] Received ReadRequest for key=65
+[Node 40] Notifying node 0 for ReadRequest: key=65 client=client1
+[Node 40] Notifying node 10 for ReadRequest: key=65 client=client1
+[Node 40] Notifying node 20 for ReadRequest: key=65 client=client1
+[Node 40] Started read coordinator for key= (65 client1)
+[Node 0] Replied GetVersionRead for key=65 v=2
+[Node 20] Replied GetVersionRead for key=65 v=2
+[Node 10] Replied GetVersionRead for key=65 v=2
+[Node 40] (Read) GetVersionRead responses: 0=2
+[Node 40] (Read) GetVersionRead responses: 0=2, 20=2
+[Node 40] (Read) Returning value v=2 to client
+[client1] Received ReadResponse for key=65 value="Second" version=2
+[client1] Sending response to manager: READ 65 success=true message=Value="Second" version=2
+[TestManager] Received client response: READ 65 success=true
+[TestManager] Client request batch completed.
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Second" (v2)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Second" (v2)
+[TestManager] Node 20:
+[TestManager]   Key: 65 -> Value: "Second" (v2)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 10, 20, 27, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====      Sequential Consistency test completed.       ====
+[Main] Summary:
+[Main]   - Sequential consistency verified across clients.
+[Main]   - Data integrity maintained during operations.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====     Starting Recover Lost Writes test              ====
+[Main] ============================================================
+[Main] Node10 crashing...
+[TestManager] CRASH completed: Node 10
+[Node 10] Crashing node
+[TestManager] CRASH completed: Node 10 crashed
+[TestManager] Node action batch completed.
+[client0] Updated node list. Active targets: 4
+[client2] Updated node list. Active targets: 4
+[client1] Updated node list. Active targets: 4
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Client2 writing key=65, value='Third' asking node40...
+[client2] Sending WriteRequest key=65, value="Third" to Node40
+[Node 40] Received WriteRequest for key=65 value="Third"
+[Node 40] Notifying node 0 for WriteRequest: key=65 value="Third"
+[Node 40] Notifying node 10 for WriteRequest: key=65 value="Third"
+[Node 40] Notifying node 20 for WriteRequest: key=65 value="Third"
+[Node 40] (Write) GetVersionWrite responses: 20=2
+[Node 40] (Write) GetVersionWrite responses: 0=2, 20=2
+[Node 40] Computed new version 3
+[Node 0] Stored key=65 version=3 value="Third"
+[Node 20] Stored key=65 version=3 value="Third"
+[client2] Received WriteResponse for key=65 value="Third" version=3
+[client2] Sending response to manager: WRITE 65 Third success=true message=Write successful for key=65 version=3
+[TestManager] Received client response: WRITE 65 Third success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Node10 reovering...
+[TestManager] RECOVER completed: Node 10
+[Node 10] Starting RECOVERY via testManager
+[Node 10] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
+[Node 10] RECOVER: requesting items from successor 20
+[Node 10] RECOVER: requesting items from predecessor 0
+[Node 10] Timeout armed for RECOVERING: waiting data transfer from successor 20, predecessor 0
+[Node 20] IDLE: sending 1 items to 10
+[Node 0] IDLE: sending 1 items to 10
+[Node 10] Timeout armed for RECOVERING: waiting data transfer from predecessor 0
+[Node 10] RECOVER: waiting for more responses (1/2)
+[Node 10] Timeout armed for RECOVERING: waiting maintenance reads quorum for 1 keys
+17:32:56.721 [MarsSystem-akka.actor.default-dispatcher-7] INFO akka.actor.RepointableActorRef - Message [it.unitn.Node$GetVersionRead] from Actor[akka://MarsSystem/user/Node10#337647744] to Actor[akka://MarsSystem/user/Node10#337647744] was unhandled. [2] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-dead-letters' and 'akka.log-dead-letters-during-shutdown'.
+[Node 0] Replied GetVersionRead for key=65 v=3
+[Node 20] Replied GetVersionRead for key=65 v=3
+[Node 10] (Read) GetVersionRead responses: 20=3
+[Node 10] (Read) GetVersionRead responses: 0=3, 20=3
+[Node 10] RECOVERY completed (maintenance done) and serving.
+[TestManager] RECOVER completed: Node 10 recovered
+[TestManager] Action detail: Maintenance completed
+[TestManager] Node action batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[client0] Updated node list. Active targets: 5
+[client1] Updated node list. Active targets: 5
+[Main] 
+[client2] Updated node list. Active targets: 5
+[Main] Client0 reads key=65 (should see 'Third') asking node27...
+[client0] Sending ReadRequest key=65 to Node27
+[Node 27] Received ReadRequest for key=65
+[Node 27] Notifying node 0 for ReadRequest: key=65 client=client0
+[Node 27] Notifying node 10 for ReadRequest: key=65 client=client0
+[Node 27] Notifying node 20 for ReadRequest: key=65 client=client0
+[Node 27] Started read coordinator for key= (65 client0)
+[Node 0] Replied GetVersionRead for key=65 v=3
+[Node 10] Replied GetVersionRead for key=65 v=3
+[Node 20] Replied GetVersionRead for key=65 v=3
+[Node 27] (Read) GetVersionRead responses: 20=3
+[Node 27] (Read) GetVersionRead responses: 0=3, 20=3
+[Node 27] (Read) Returning value v=3 to client
+[client0] Received ReadResponse for key=65 value="Third" version=3
+[client0] Sending response to manager: READ 65 success=true message=Value="Third" version=3
+[TestManager] Received client response: READ 65 success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 20, 27, 40, 10]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====      Recover Lost Writes test completed.          ====
+[Main] Summary:
+[Main]   - Lost writes successfully recovered after node recovery.
+[Main]   - Data consistency verified across the system.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====        Starting Read Missing Key test             ====
+[Main] ============================================================
+[Main] Client1 reading non-existent key=999 asking node50...
+[client1] Sending ReadRequest key=999 to Node20
+[Node 20] Received ReadRequest for key=999
+[Node 20] Notifying node 0 for ReadRequest: key=999 client=client1
+[Node 20] Notifying node 10 for ReadRequest: key=999 client=client1
+[Node 20] Notifying node 20 for ReadRequest: key=999 client=client1
+[Node 20] Started read coordinator for key= (999 client1)
+[Node 0] Replied GetVersionRead for key=999 v=0
+[Node 20] Replied GetVersionRead for key=999 v=0
+[Node 20] (Read) GetVersionRead responses: 20=0
+[Node 10] Replied GetVersionRead for key=999 v=0
+[Node 20] (Read) GetVersionRead responses: 0=0, 20=0
+[Node 20] (Read) Key=999 not found (all versions 0)
+[client1] Sending response to manager: WRITE 999 null success=false message=Operation failed: Key not found
+[TestManager] Received client response: WRITE 999 null success=false
+[TestManager] Pending client requests remain, batch not yet complete.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 20, 27, 40, 10]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====        Read Missing Key test completed.             ====
+[Main] Summary:
+[Main]   - Read operation on non-existent key handled gracefully.
+[Main]   - System state remains consistent.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====     Starting Concurrent Writes Same Key test      ====
+[Main] ============================================================
+[Main] Client2 writing key=18, value='Alpha' asking node0...
+[Main] Client0 writing key=18, value='Beta' asking node40...
+[client2] Sending WriteRequest key=18, value="Alpha" to Node0
+[client0] Sending WriteRequest key=18, value="Beta" to Node40
+[Node 0] Received WriteRequest for key=18 value="Alpha"
+[Node 40] Received WriteRequest for key=18 value="Beta"
+[Node 0] Notifying node 20 for WriteRequest: key=18 value="Alpha"
+[Node 40] Notifying node 20 for WriteRequest: key=18 value="Beta"
+[Node 0] Notifying node 27 for WriteRequest: key=18 value="Alpha"
+[Node 40] Notifying node 27 for WriteRequest: key=18 value="Beta"
+[Node 0] Notifying node 40 for WriteRequest: key=18 value="Alpha"
+[Node 40] Notifying node 40 for WriteRequest: key=18 value="Beta"
+[Node 40] Rejected GetVersionWrite from Coord: Node0 for key=18 due to ongoing write
+[Node 20] Rejected GetVersionWrite from Coord: Node0 for key=18 due to ongoing write
+[Node 27] Rejected GetVersionWrite from Coord: Node40 for key=18 due to ongoing write
+[Node 40] (Write) GetVersionWrite responses: 40=0
+[Node 40] (Write) GetVersionWrite responses: 20=0, 40=0
+[Node 40] Computed new version 1
+[Node 0] (Write) GetVersionWrite responses: 27=0
+[Node 0] Coord: Ignored VersionWriteResponse from Node40 for key=18 due to ongoing write
+[client0] Received WriteResponse for key=18 value="Beta" version=1
+[client0] Sending response to manager: WRITE 18 Beta success=true message=Write successful for key=18 version=1
+[TestManager] Received client response: WRITE 18 Beta success=true
+[TestManager] Pending client requests remain, batch not yet complete.
+[Node 40] Stored key=18 version=1 value="Beta"
+[Node 0] Coord: Ignored VersionWriteResponse from Node20 for key=18 due to ongoing write
+[Node 40] Coord: Ignored VersionWriteResponse from Node27 for key=18 due to ongoing write
+[Node 20] Stored key=18 version=1 value="Beta"
+[Node 27] Rejected UpdateValue for key=18 due to lock held by another node
+[client1] Sending response to manager: READ 999 success=false message=Timeout waiting for response. Node may be unresponsive (crashed).
+[TestManager] Received client response: READ 999 success=false
+[TestManager] Pending client requests remain, batch not yet complete.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Client2 reading key=18 asking node27...
+[client2] Sending ReadRequest key=18 to Node27
+[Node 27] Received ReadRequest for key=18
+[Node 27] Rejected ReadRequest for key=18 due to ongoing write
+[client2] Sending response to manager: WRITE 18 null success=false message=Operation failed: Another write in progress for this key
+[TestManager] Received client response: WRITE 18 null success=false
+[TestManager] Pending client requests remain, batch not yet complete.
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[Node 0] WriteTimeout: Write quorum W=2 not reached for key 18 (client=client2)
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 5
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 20, 27, 40, 10]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[client2] Sending response to manager: WRITE 18 Alpha success=false message=Operation failed: Write quorum W=2 not reached for key 18 (client=client2)
+[TestManager] Received client response: WRITE 18 Alpha success=false
+[TestManager] Pending client requests remain, batch not yet complete.
+[Main] 
+[Main] ============================================================
+[Main] ====   Concurrent Writes Same Key test completed.      ====
+[Main] Summary:
+[Main]   - Concurrent writes to the same key handled correctly.
+[Main]   - Data consistency maintained across operations.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[client2] Sending response to manager: READ 18 success=false message=Timeout waiting for response. Node may be unresponsive (crashed).
+[TestManager] Received client response: READ 18 success=false
+[TestManager] Client request batch completed.
+[Main] 
+[Main] ============================================================
+[Main] ====     Starting Request During Node Action test       ====
+[Main] ============================================================
+[Main] Join node70...
+[Main] While join is in progress, Client1 writes key=33, value='Delta' asking node20...
+[TestManager] JOIN completed: Node 70 joined the system
+[Node 70] Timeout armed for JOINING: waiting bootstrap peer response for JOIN
+[Node 70] JOIN: requesting items from 0
+[Node 70] Timeout armed for JOINING: waiting data transfer from successor 0
+[Node 0] IDLE: sending 2 items to null
+[Node 70] Timeout armed for JOINING: waiting maintenance reads quorum for 2 keys
+[Node 40] Replied GetVersionRead for key=25 v=1
+[Node 27] Replied GetVersionRead for key=25 v=1
+[Node 0] Replied GetVersionRead for key=25 v=1
+[Node 20] Replied GetVersionRead for key=65 v=3
+[Node 0] Replied GetVersionRead for key=65 v=3
+[Node 10] Replied GetVersionRead for key=65 v=3
+[Node 70] (Read) GetVersionRead responses: 27=1
+[Node 70] (Read) GetVersionRead responses: 27=1, 40=1
+[Node 70] (Read) GetVersionRead responses: 20=3
+[Node 70] (Read) GetVersionRead responses: 0=3, 20=3
+[TestManager] JOIN completed: Node 70 joined the system
+[TestManager] Action detail: Maintenance completed
+[Node 70] JOIN completed (maintenance done) and serving.
+[TestManager] Node action batch completed.
+[client0] Updated node list. Active targets: 6
+[client2] Updated node list. Active targets: 6
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[client1] Updated node list. Active targets: 6
+[Node 27] AnnounceJoin: added 70 with backfill
+[Node 0] Pruned key=25 (no longer responsible)
+[Node 0] AnnounceJoin: added 70 with backfill
+[Node 20] Pruned key=65 (no longer responsible)
+[Node 20] AnnounceJoin: added 70 with backfill
+[Node 10] AnnounceJoin: added 70 with backfill
+[Node 40] AnnounceJoin: added 70 with backfill
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 70:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 6
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 20, 27, 40, 10, 70]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====   Request During Node Action test completed.       ====
+[Main] Summary:
+[Main]   - Requests during node actions handled appropriately.
+[Main]   - System stability maintained.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====     Starting Node Action During Request test       ====
+[Main] ============================================================
+[Main] Client2 reads key=18 asking node10...
+[Main] While request is pending, crash node10...
+[client2] Sending ReadRequest key=18 to Node10
+[Node 10] Received ReadRequest for key=18
+[Node 10] Notifying node 20 for ReadRequest: key=18 client=client2
+[Node 10] Notifying node 27 for ReadRequest: key=18 client=client2
+[Node 10] Notifying node 40 for ReadRequest: key=18 client=client2
+[Node 10] Started read coordinator for key= (18 client2)
+[Node 40] Replied GetVersionRead for key=18 v=1
+[Node 20] Replied GetVersionRead for key=18 v=1
+[Node 10] (Read) GetVersionRead responses: 20=1
+[Node 27] Rejected GetVersionRead for key=18 due to ongoing write
+[Node 10] Coord: Ignored VersionReadResponse for key=18 due to ongoing write
+[Node 10] (Read) GetVersionRead responses: 20=1, 40=1
+[Node 10] (Read) Returning value v=1 to client
+[client2] Received ReadResponse for key=18 value="Beta" version=1
+[client2] Sending response to manager: READ 18 success=true message=Value="Beta" version=1
+[TestManager] Received client response: READ 18 success=true
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 27:
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 40:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] Node 70:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 6
+[TestManager] Crashed nodes: 0
+[TestManager] Active node IDs: [0, 20, 27, 40, 10, 70]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====   Node Action During Request test completed.       ====
+[Main] Summary:
+[Main]   - Node actions during pending requests handled correctly.
+[Main]   - Data integrity and system stability maintained.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====         Starting Ask to Crashed Node test         ====
+[Main] ============================================================
+[Main] Crashing node27...
+[TestManager] CRASH completed: Node 27
+[Node 27] Crashing node
+[TestManager] CRASH completed: Node 27 crashed
+[TestManager] Node action batch completed.
+[Main] 
+[client0] Updated node list. Active targets: 5
+[Main] Press ENTER to continue...
+[Main] 
+[client2] Updated node list. Active targets: 5
+[client1] Updated node list. Active targets: 5
+[Main] Client0 writing key=30, value='Epsilon' asking crashed node27...
+[client0] Sending WriteRequest key=30, value="Epsilon" to Node27
+[client0] Sending response to manager: WRITE 30 Epsilon success=false message=Timeout waiting for response. Node may be unresponsive (crashed).
+[TestManager] Received client response: WRITE 30 Epsilon success=false
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Crashing node40...
+[TestManager] CRASH completed: Node 40
+[Node 40] Crashing node
+[TestManager] CRASH completed: Node 40 crashed
+[TestManager] Node action batch completed.
+[client0] Updated node list. Active targets: 4
+[client1] Updated node list. Active targets: 4
+[client2] Updated node list. Active targets: 4
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] Client1 reading key=30 asking crashed node40...
+[client1] Sending ReadRequest key=30 to Node40
+[client1] Sending response to manager: READ 30 success=false message=Timeout waiting for response. Node may be unresponsive (crashed).
+[TestManager] Received client response: READ 30 success=false
+[TestManager] Client request batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 70:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 4
+[TestManager] Crashed nodes: 2
+[TestManager] Active node IDs: [0, 20, 10, 70]
+[TestManager] Crashed node IDs: [27, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+[Main] ============================================================
+[Main] ====       Ask to Crashed Node test completed.        ====
+[Main] Summary:
+[Main]   - System handled requests to crashed nodes gracefully.
+[Main]   - Stability and data integrity maintained.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====          Starting Failing JOIN test               ====
+[Main] ============================================================
+[Main] Simulating failing JOIN for node25 (should fail due to the crash of its successor node, node27)...
+[TestManager] JOIN completed: Node 25 joined the system
+[Node 25] Timeout armed for JOINING: waiting bootstrap peer response for JOIN
+[Node 25] JOIN: requesting items from 27
+[Node 25] Timeout armed for JOINING: waiting data transfer from successor 27
+[TestManager] Node action batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 70:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 4
+[TestManager] Crashed nodes: 2
+[TestManager] Active node IDs: [0, 20, 10, 70]
+[TestManager] Crashed node IDs: [27, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+============================================================
+[Main] ====            Failing JOIN test completed.           ====
+[Main] Summary:
+[Main]   - Failing JOIN operation handled correctly.
+[Main]   - System state is stable and ready for further tests.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[Main] 
+[Main] ============================================================
+[Main] ====         Starting Failing RECOVER test             ====
+[Main] ============================================================
+[Main] Simulating failing RECOVER for node40 (should fail due to the crash of its predecessor node, node27)...
+[TestManager] RECOVER completed: Node 40
+[Node 40] Starting RECOVERY via testManager
+[Node 40] Timeout armed for RECOVERING: waiting bootstrap peer response for RECOVER
+[Node 40] RECOVER: requesting items from successor 70
+[Node 40] RECOVER: requesting items from predecessor 27
+[Node 40] Timeout armed for RECOVERING: waiting data transfer from successor 70, predecessor 27
+[Node 70] IDLE: sending 1 items to 40
+[Node 40] Timeout armed for RECOVERING: waiting data transfer from predecessor 27
+[Node 40] RECOVER: waiting for more responses (1/2)
+[TestManager] Node action batch completed.
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
+[TestManager] 
+
+[TestManager] === PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] === COMPLETED PRINTING STORE CONTENTS OF ALL ACTIVE NODES ===
+[TestManager] Node 0:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 10:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager] Node 20:
+[TestManager]   Key: 18 -> Value: "Beta" (v1)
+[TestManager] Node 70:
+[TestManager]   Key: 65 -> Value: "Third" (v3)
+[TestManager]   Key: 25 -> Value: "HelloWorld" (v1)
+[TestManager] 
+
+[TestManager] =====================
+[TestManager] === SYSTEM STATUS ===
+[TestManager] Active nodes: 4
+[TestManager] Crashed nodes: 2
+[TestManager] Active node IDs: [0, 20, 10, 70]
+[TestManager] Crashed node IDs: [27, 40]
+[TestManager] Client list: 3
+[TestManager] Clients: [client0, client1, client2]
+[TestManager] =====================
+[Main] 
+============================================================
+[Main] ====           Failing RECOVER test completed.        ====
+[Main] Summary:
+[Main]   - Failing RECOVER operation handled correctly.
+[Main]   - System state is stable and ready for further tests.
+[Main] ============================================================
+
+[Main] 
+[Main] Press ENTER to continue...
+[Main] 
 [Main] All automated scenarios completed. Terminate the program when ready.
