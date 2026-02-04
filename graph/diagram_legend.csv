@@ -1,0 +1,17 @@
+# label: %name%
+# style: shape=%shape%;fillColor=%fill%;strokeColor=%stroke%;fontColor=%fontcolor%;fontSize=12;fontStyle=1;
+# namespace: legend-
+# width: 120
+# height: 40
+# padding: 10
+# ignore: shape,fill,stroke,fontcolor
+# layout: verticalflow
+name,shape,fill,stroke,fontcolor
+🖥️ Node (Storage),rectangle,#E3F2FD,#1565C0,#1565C0
+👤 Client,rectangle,#E8F5E9,#2E7D32,#2E7D32
+📊 TestManager,rectangle,#FFECB3,#FF8F00,#FF8F00
+🔵 Write Operation,rectangle,#BBDEFB,#1976D2,#1976D2
+🟢 Read Operation,rectangle,#C8E6C9,#388E3C,#388E3C
+🔴 Error/Timeout,rectangle,#FFCDD2,#D32F2F,#D32F2F
+💥 Node Crash,rectangle,#FFCCBC,#E64A19,#E64A19
+✅ Node Recovery,rectangle,#C8E6C9,#388E3C,#388E3C

@@ -1,3 +1,19 @@
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#E3F2FD',
+  'primaryTextColor': '#1565C0',
+  'primaryBorderColor': '#1565C0',
+  'lineColor': '#5C6BC0',
+  'secondaryColor': '#F3E5F5',
+  'tertiaryColor': '#E8F5E9',
+  'noteBkgColor': '#FFF9C4',
+  'noteTextColor': '#333',
+  'noteBorderColor': '#FBC02D',
+  'actorBkg': '#E3F2FD',
+  'actorBorder': '#1565C0',
+  'actorTextColor': '#1565C0',
+  'signalColor': '#5C6BC0',
+  'signalTextColor': '#333'
+}}}%%
 sequenceDiagram
     autonumber
     participant client0 as client0
@@ -6,187 +22,128 @@ sequenceDiagram
     participant Node0 as Node0
     participant Node10 as Node10
     participant Node20 as Node20
+    participant Node27 as Node27
     participant Node30 as Node30
     participant Node40 as Node40
-    participant Node50 as Node50
-    participant Node60 as Node60
     participant Node70 as Node70
-    participant Node80 as Node80
-    participant Node90 as Node90
-    participant TestManager as TestManager
+    participant TestManager as Manager
 
-    client1->>Node30: WriteRequest: key=42 value='Value2_Client2'
-    client2->>Node60: WriteRequest: key=42 value='Value3_Client3'
-    client0->>Node70: WriteRequest: key=42 value='Value1_Client1'
-    Node60->>Node50: NotifyWriteRequest: key=42 value='Value3_Client3'
-    Node30->>Node50: NotifyWriteRequest: key=42 value='Value2_Client2'
-    Node70->>Node50: NotifyWriteRequest: key=42 value='Value1_Client1'
-    Node70->>Node60: NotifyWriteRequest: key=42 value='Value1_Client1'
-    Node60->>Node60: NotifyWriteRequest: key=42 value='Value3_Client3'
-    Node30->>Node60: NotifyWriteRequest: key=42 value='Value2_Client2'
-    Node70->>Node70: NotifyWriteRequest: key=42 value='Value1_Client1'
-    Node30->>Node70: NotifyWriteRequest: key=42 value='Value2_Client2'
-    Node70->>Node80: NotifyWriteRequest: key=42 value='Value1_Client1'
-    Node30->>Node80: NotifyWriteRequest: key=42 value='Value2_Client2'
-    Node60->>Node70: NotifyWriteRequest: key=42 value='Value3_Client3'
-    Node30->>Node90: NotifyWriteRequest: key=42 value='Value2_Client2'
-    Node60->>Node80: NotifyWriteRequest: key=42 value='Value3_Client3'
-    Node70->>Node90: NotifyWriteRequest: key=42 value='Value1_Client1'
-    Node60->>Node90: NotifyWriteRequest: key=42 value='Value3_Client3'
-    Note over Node30: Timeout
-    Note over Node60: Timeout
-    Note over Node70: Timeout
-    client1-->>TestManager: Response: WRITE 42 Value2_Client2 success=false message=Oper...
-    client2-->>TestManager: Response: WRITE 42 Value3_Client3 success=false message=Oper...
-    client0-->>TestManager: Response: WRITE 42 Value1_Client1 success=false message=Oper...
-    client0->>Node90: ReadRequest: key=42
-    client2->>Node70: ReadRequest: key=42
-    client1->>Node10: ReadRequest: key=42
-    Node10->>Node50: NotifyReadRequest: key=42 client=client1
-    Node70->>Node50: NotifyReadRequest: key=42 client=client2
-    Node10->>Node60: NotifyReadRequest: key=42 client=client1
-    Node10->>Node70: NotifyReadRequest: key=42 client=client1
-    Node70->>Node60: NotifyReadRequest: key=42 client=client2
-    Node10->>Node80: NotifyReadRequest: key=42 client=client1
-    Node70->>Node70: NotifyReadRequest: key=42 client=client2
-    Node10->>Node90: NotifyReadRequest: key=42 client=client1
-    Node70->>Node80: NotifyReadRequest: key=42 client=client2
-    Node70->>Node90: NotifyReadRequest: key=42 client=client2
-    Note over Node70: Timeout
-    Note over Node10: Timeout
-    client2-->>TestManager: Response: READ 42 success=false message=Timeout waiting for ...
-    client1-->>TestManager: Response: READ 42 success=false message=Timeout waiting for ...
-    client0-->>TestManager: Response: READ 42 success=false message=Timeout waiting for ...
-    client0->>Node80: WriteRequest: key=10 value='DataA'
-    client2->>Node60: WriteRequest: key=80 value='DataC'
-    client1->>Node20: WriteRequest: key=20 value='DataB'
-    Node80->>Node10: NotifyWriteRequest: key=10 value='DataA'
-    Node80->>Node20: NotifyWriteRequest: key=10 value='DataA'
-    Node60->>Node80: NotifyWriteRequest: key=80 value='DataC'
-    Node80->>Node30: NotifyWriteRequest: key=10 value='DataA'
-    Node60->>Node90: NotifyWriteRequest: key=80 value='DataC'
-    Node20->>Node20: NotifyWriteRequest: key=20 value='DataB'
-    Node60->>Node0: NotifyWriteRequest: key=80 value='DataC'
-    Node20->>Node30: NotifyWriteRequest: key=20 value='DataB'
-    Node60->>Node10: NotifyWriteRequest: key=80 value='DataC'
-    Node80->>Node40: NotifyWriteRequest: key=10 value='DataA'
-    Node20->>Node40: NotifyWriteRequest: key=20 value='DataB'
-    Node80->>Node50: NotifyWriteRequest: key=10 value='DataA'
-    Node20->>Node50: NotifyWriteRequest: key=20 value='DataB'
-    Node60->>Node20: NotifyWriteRequest: key=80 value='DataC'
-    Node20->>Node60: NotifyWriteRequest: key=20 value='DataB'
-    client1-->>TestManager: Response: WRITE 20 DataB success=true message=Write successf...
-    client0-->>TestManager: Response: WRITE 10 DataA success=true message=Write successf...
-    client2-->>TestManager: Response: WRITE 80 DataC success=true message=Write successf...
-    client0->>Node50: ReadRequest: key=10
-    client1->>Node20: ReadRequest: key=20
-    client2->>Node50: ReadRequest: key=80
-    Node50->>Node10: NotifyReadRequest: key=10 client=client0
-    Node20->>Node20: NotifyReadRequest: key=20 client=client1
-    Node50->>Node20: NotifyReadRequest: key=10 client=client0
-    Node20->>Node30: NotifyReadRequest: key=20 client=client1
-    Node50->>Node30: NotifyReadRequest: key=10 client=client0
-    Node20->>Node40: NotifyReadRequest: key=20 client=client1
-    Node50->>Node40: NotifyReadRequest: key=10 client=client0
-    Node50->>Node50: NotifyReadRequest: key=10 client=client0
-    Node20->>Node50: NotifyReadRequest: key=20 client=client1
-    Node20->>Node60: NotifyReadRequest: key=20 client=client1
-    Node50->>Node80: NotifyReadRequest: key=80 client=client2
-    Node50->>Node90: NotifyReadRequest: key=80 client=client2
-    Node50->>Node0: NotifyReadRequest: key=80 client=client2
-    Node50->>Node10: NotifyReadRequest: key=80 client=client2
-    Node50->>Node20: NotifyReadRequest: key=80 client=client2
-    client0-->>TestManager: Response: READ 10 success=true message=Value='DataA' version...
-    client1-->>TestManager: Response: READ 20 success=true message=Value='DataB' version...
-    client2-->>TestManager: Response: READ 80 success=true message=Value='DataC' version...
-    client0->>Node10: WriteRequest: key=55 value='TimeoutBaseline'
-    Node10->>Node60: NotifyWriteRequest: key=55 value='TimeoutBaseline'
-    Node10->>Node70: NotifyWriteRequest: key=55 value='TimeoutBaseline'
-    Node10->>Node80: NotifyWriteRequest: key=55 value='TimeoutBaseline'
-    Node10->>Node90: NotifyWriteRequest: key=55 value='TimeoutBaseline'
-    Node10->>Node0: NotifyWriteRequest: key=55 value='TimeoutBaseline'
-    client0-->>TestManager: Response: WRITE 55 TimeoutBaseline success=true message=Writ...
-    Note over Node60: Crash
-    Note over Node70: Crash
-    client1->>Node0: WriteRequest: key=55 value='TimeoutAfterCrash'
-    Node0->>Node60: NotifyWriteRequest: key=55 value='TimeoutAfterCrash'
-    Node0->>Node70: NotifyWriteRequest: key=55 value='TimeoutAfterCrash'
-    Node0->>Node80: NotifyWriteRequest: key=55 value='TimeoutAfterCrash'
-    Node0->>Node90: NotifyWriteRequest: key=55 value='TimeoutAfterCrash'
-    Node0->>Node0: NotifyWriteRequest: key=55 value='TimeoutAfterCrash'
-    Note over Node0: Timeout
-    client1-->>TestManager: Response: WRITE 55 TimeoutAfterCrash success=false message=O...
-    client2->>Node30: ReadRequest: key=55
-    Node30->>Node60: NotifyReadRequest: key=55 client=client2
-    Node30->>Node70: NotifyReadRequest: key=55 client=client2
-    Node30->>Node80: NotifyReadRequest: key=55 client=client2
-    Node30->>Node90: NotifyReadRequest: key=55 client=client2
-    Node30->>Node0: NotifyReadRequest: key=55 client=client2
-    Note over Node30: Timeout
-    client2-->>TestManager: Response: READ 55 success=false message=Timeout waiting for ...
-    client0->>Node30: WriteRequest: key=57 value='BeforeJoin'
-    Node30->>Node60: NotifyWriteRequest: key=57 value='BeforeJoin'
-    Node30->>Node70: NotifyWriteRequest: key=57 value='BeforeJoin'
-    Node30->>Node80: NotifyWriteRequest: key=57 value='BeforeJoin'
-    Node30->>Node90: NotifyWriteRequest: key=57 value='BeforeJoin'
-    Node30->>Node0: NotifyWriteRequest: key=57 value='BeforeJoin'
-    Note over Node30: Timeout
-    client0-->>TestManager: Response: WRITE 57 BeforeJoin success=false message=Operatio...
-    client0->>Node50: WriteRequest: key=1000 value='InitialData'
-    Node50->>Node0: NotifyWriteRequest: key=1000 value='InitialData'
-    Node50->>Node10: NotifyWriteRequest: key=1000 value='InitialData'
-    Node50->>Node20: NotifyWriteRequest: key=1000 value='InitialData'
-    Node50->>Node30: NotifyWriteRequest: key=1000 value='InitialData'
-    Node50->>Node40: NotifyWriteRequest: key=1000 value='InitialData'
-    client0-->>TestManager: Response: WRITE 1000 InitialData success=true message=Write ...
-    Note over Node20: Crash
-    client0->>Node30: WriteRequest: key=1001 value='DuringCrash1'
-    Node30->>Node0: NotifyWriteRequest: key=1001 value='DuringCrash1'
-    Node30->>Node10: NotifyWriteRequest: key=1001 value='DuringCrash1'
-    Node30->>Node20: NotifyWriteRequest: key=1001 value='DuringCrash1'
-    Node30->>Node30: NotifyWriteRequest: key=1001 value='DuringCrash1'
-    Node30->>Node40: NotifyWriteRequest: key=1001 value='DuringCrash1'
-    client0-->>TestManager: Response: WRITE 1001 DuringCrash1 success=true message=Write...
-    client0->>Node90: WriteRequest: key=1002 value='DuringCrash2'
-    Node90->>Node0: NotifyWriteRequest: key=1002 value='DuringCrash2'
-    Node90->>Node10: NotifyWriteRequest: key=1002 value='DuringCrash2'
-    Node90->>Node20: NotifyWriteRequest: key=1002 value='DuringCrash2'
-    Node90->>Node30: NotifyWriteRequest: key=1002 value='DuringCrash2'
-    Node90->>Node40: NotifyWriteRequest: key=1002 value='DuringCrash2'
-    client0-->>TestManager: Response: WRITE 1002 DuringCrash2 success=true message=Write...
-    client0->>Node90: ReadRequest: key=1000
-    Node90->>Node0: NotifyReadRequest: key=1000 client=client0
-    Node90->>Node10: NotifyReadRequest: key=1000 client=client0
-    Node90->>Node20: NotifyReadRequest: key=1000 client=client0
-    Node90->>Node30: NotifyReadRequest: key=1000 client=client0
-    Node90->>Node40: NotifyReadRequest: key=1000 client=client0
-    client0-->>TestManager: Response: READ 1000 success=true message=Value='InitialData'...
-    Note over Node20: Recovered
-    client0->>Node0: ReadRequest: key=1000
-    Node0->>Node0: NotifyReadRequest: key=1000 client=client0
-    Node0->>Node10: NotifyReadRequest: key=1000 client=client0
-    Node0->>Node20: NotifyReadRequest: key=1000 client=client0
-    Node0->>Node30: NotifyReadRequest: key=1000 client=client0
-    Node0->>Node40: NotifyReadRequest: key=1000 client=client0
-    client0-->>TestManager: Response: READ 1000 success=true message=Value='InitialData'...
-    client0->>Node80: ReadRequest: key=1001
-    Node80->>Node0: NotifyReadRequest: key=1001 client=client0
-    Node80->>Node10: NotifyReadRequest: key=1001 client=client0
-    Node80->>Node20: NotifyReadRequest: key=1001 client=client0
-    Node80->>Node30: NotifyReadRequest: key=1001 client=client0
-    Node80->>Node40: NotifyReadRequest: key=1001 client=client0
-    client0-->>TestManager: Response: READ 1001 success=true message=Value='DuringCrash1...
-    client0->>Node80: ReadRequest: key=1002
-    Node80->>Node0: NotifyReadRequest: key=1002 client=client0
-    Node80->>Node10: NotifyReadRequest: key=1002 client=client0
-    Node80->>Node20: NotifyReadRequest: key=1002 client=client0
-    Node80->>Node30: NotifyReadRequest: key=1002 client=client0
-    Node80->>Node40: NotifyReadRequest: key=1002 client=client0
-    client0-->>TestManager: Response: READ 1002 success=true message=Value='DuringCrash2...
-    client0->>Node90: WriteRequest: key=1003 value='AfterRecovery'
-    Node90->>Node0: NotifyWriteRequest: key=1003 value='AfterRecovery'
-    Node90->>Node10: NotifyWriteRequest: key=1003 value='AfterRecovery'
-    Node90->>Node20: NotifyWriteRequest: key=1003 value='AfterRecovery'
-    Node90->>Node30: NotifyWriteRequest: key=1003 value='AfterRecovery'
-    Node90->>Node40: NotifyWriteRequest: key=1003 value='AfterRecovery'
-    client0-->>TestManager: Response: WRITE 1003 AfterRecovery success=true message=Writ...
+    rect rgba(173, 216, 230, 0.3)
+    Note over client0,TestManager: SINGLE-CLIENT BASIC TEST
+    client0->>Node20: WRITE (key=25)
+    Node20-->>Node30: GetVersion (key=25)
+    Node20-->>Node40: GetVersion (key=25)
+    Node20-->>Node0: GetVersion (key=25)
+    client0->>TestManager: WRITE (key=25 [OK])
+    client0->>Node20: READ (key=25)
+    Node20-->>Node30: GetVersion (key=25)
+    Node20-->>Node40: GetVersion (key=25)
+    Node20-->>Node0: GetVersion (key=25)
+    client0->>TestManager: READ (key=25 [OK])
+    end
+    rect rgba(144, 238, 144, 0.3)
+    Note over client0,TestManager: NODE JOIN TEST
+    Note over Node27: JOINED
+    end
+    rect rgba(255, 218, 185, 0.3)
+    Note over client0,TestManager: NODE LEAVE TEST
+    end
+    rect rgba(221, 160, 221, 0.3)
+    Note over client0,TestManager: NODE CRASH TEST
+    end
+    rect rgba(176, 224, 230, 0.3)
+    Note over client0,TestManager: NODE RECOVER TEST
+    end
+    rect rgba(255, 182, 193, 0.3)
+    Note over client0,TestManager: RECOVERY VIA TEST
+    Note over Node40: RECOVERED
+    end
+    rect rgba(255, 255, 224, 0.3)
+    Note over client0,TestManager: SEQUENTIAL CONSISTENCY TEST
+    client2->>Node20: WRITE (key=65)
+    Node20-->>Node0: GetVersion (key=65)
+    Node20-->>Node10: GetVersion (key=65)
+    Node20-->>Node20: GetVersion (key=65)
+    client2->>TestManager: WRITE (key=65 [OK])
+    client0->>Node27: WRITE (key=65)
+    Node27-->>Node0: GetVersion (key=65)
+    Node27-->>Node10: GetVersion (key=65)
+    Node27-->>Node20: GetVersion (key=65)
+    client0->>TestManager: WRITE (key=65 [OK])
+    client1->>Node40: READ (key=65)
+    Node40-->>Node0: GetVersion (key=65)
+    Node40-->>Node10: GetVersion (key=65)
+    Node40-->>Node20: GetVersion (key=65)
+    client1->>TestManager: READ (key=65 [OK])
+    end
+    rect rgba(211, 211, 211, 0.3)
+    Note over client0,TestManager: RECOVER LOST WRITES TEST
+    client2->>Node40: WRITE (key=65)
+    Node40-->>Node0: GetVersion (key=65)
+    Node40-->>Node10: GetVersion (key=65)
+    Node40-->>Node20: GetVersion (key=65)
+    client2->>TestManager: WRITE (key=65 [OK])
+    end
+    rect rgba(173, 216, 230, 0.3)
+    Note over client0,TestManager: RECOVERY VIA TEST
+    Note over Node10: RECOVERED
+    client0->>Node27: READ (key=65)
+    Node27-->>Node0: GetVersion (key=65)
+    Node27-->>Node10: GetVersion (key=65)
+    Node27-->>Node20: GetVersion (key=65)
+    client0->>TestManager: READ (key=65 [OK])
+    end
+    rect rgba(144, 238, 144, 0.3)
+    Note over client0,TestManager: READ MISSING KEY TEST
+    client1->>Node20: READ (key=999)
+    Node20-->>Node0: GetVersion (key=999)
+    Node20-->>Node10: GetVersion (key=999)
+    Node20-->>Node20: GetVersion (key=999)
+    client1->>TestManager: WRITE (key=999 [FAIL])
+    end
+    rect rgba(255, 218, 185, 0.3)
+    Note over client0,TestManager: CONCURRENT WRITES SAME KEY TEST
+    client2->>Node0: WRITE (key=18)
+    client0->>Node40: WRITE (key=18)
+    Node0-->>Node20: GetVersion (key=18)
+    Node40-->>Node20: GetVersion (key=18)
+    Node0-->>Node27: GetVersion (key=18)
+    Node40-->>Node27: GetVersion (key=18)
+    Node0-->>Node40: GetVersion (key=18)
+    Node40-->>Node40: GetVersion (key=18)
+    client0->>TestManager: WRITE (key=18 [OK])
+    client1->>TestManager: READ (key=999 [FAIL])
+    client2->>Node27: READ (key=18)
+    client2->>TestManager: WRITE (key=18 [FAIL])
+    Note over Node0: TIMEOUT
+    client2->>TestManager: WRITE (key=18 [FAIL])
+    client2->>TestManager: READ (key=18 [FAIL])
+    end
+    rect rgba(221, 160, 221, 0.3)
+    Note over client0,TestManager: REQUEST DURING NODE ACTION TEST
+    Note over Node70: JOINED
+    end
+    rect rgba(176, 224, 230, 0.3)
+    Note over client0,TestManager: NODE ACTION DURING REQUEST TEST
+    client2->>Node10: READ (key=18)
+    Node10-->>Node20: GetVersion (key=18)
+    Node10-->>Node27: GetVersion (key=18)
+    Node10-->>Node40: GetVersion (key=18)
+    client2->>TestManager: READ (key=18 [OK])
+    end
+    rect rgba(255, 182, 193, 0.3)
+    Note over client0,TestManager: ASK TO CRASHED NODE TEST
+    client0->>Node27: WRITE (key=30)
+    client0->>TestManager: WRITE (key=30 [FAIL])
+    client1->>Node40: READ (key=30)
+    client1->>TestManager: READ (key=30 [FAIL])
+    end
+    rect rgba(255, 255, 224, 0.3)
+    Note over client0,TestManager: FAILING JOIN TEST
+    end
+    rect rgba(211, 211, 211, 0.3)
+    Note over client0,TestManager: FAILING RECOVER TEST
+    end
+    rect rgba(173, 216, 230, 0.3)
+    Note over client0,TestManager: RECOVERY VIA TEST
+    end
