@@ -12,6 +12,7 @@ Mermaid charts summarize the logical flow, while detailed tables trace the pract
 - Validate that the coordinator is serving and no conflicting write lock is active.
 - Query the responsible replicas until read quorum `R` replies arrive.
 - Return the highest version and refresh the coordinator’s local cache. On timeout, notify the client.
+- If quorum replies but all versions are `0`, respond with `OperationFailed("Key not found")`.
 
 ```mermaid
 flowchart TD
@@ -149,6 +150,7 @@ flowchart TD
 - JOIN/RECOVER always have at most one active membership timeout, re-armed with the latest textual detail.
 - Every outbound transfer stores a context, letting expired timers report exactly which peer failed.
 - Maintenance reads reuse the regular read pipeline, set `requester = getSelf()` to avoid null pointers, and detect `state.client == getSelf()` to escalate failures to membership level.
+- Client-side note: `Client.onOperationFailed` currently assumes a WRITE-shaped request ID; READ failures may not be correlated to a pending READ request.
 
 ## Method Legend
 
