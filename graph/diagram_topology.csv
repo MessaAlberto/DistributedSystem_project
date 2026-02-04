@@ -1,0 +1,26 @@
+# label: %name%
+# style: shape=%shape%;fillColor=%fill%;strokeColor=%stroke%;
+# namespace: csvimport-
+# connect: {"from": "connects", "to": "name", "style": "curved=1;endArrow=none;"}
+# width: auto
+# height: auto
+# padding: 15
+# ignore: shape,fill,stroke,connects
+# nodespacing: 40
+# levelspacing: 100
+# edgespacing: 40
+# layout: circle
+name,shape,fill,stroke,connects
+Node0,ellipse,#dae8fc,#6c8ebf,"Node10,Node90"
+Node10,ellipse,#dae8fc,#6c8ebf,"Node20,Node0"
+Node20,ellipse,#dae8fc,#6c8ebf,"Node30,Node10"
+Node30,ellipse,#dae8fc,#6c8ebf,"Node40,Node20"
+Node40,ellipse,#dae8fc,#6c8ebf,"Node50,Node30"
+Node50,ellipse,#dae8fc,#6c8ebf,"Node60,Node40"
+Node60,ellipse,#dae8fc,#6c8ebf,"Node70,Node50"
+Node70,ellipse,#dae8fc,#6c8ebf,"Node80,Node60"
+Node80,ellipse,#dae8fc,#6c8ebf,"Node90,Node70"
+Node90,ellipse,#dae8fc,#6c8ebf,"Node0,Node80"
+Client0,rectangle,#d5e8d4,#82b366,""
+Client1,rectangle,#d5e8d4,#82b366,""
+Client2,rectangle,#d5e8d4,#82b366,""
