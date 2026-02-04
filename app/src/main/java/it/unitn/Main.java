@@ -28,7 +28,7 @@ public class Main {
     final int N = Integer.parseInt(config.getProperty("N", "5")); // Replication factor
     final int R = Integer.parseInt(config.getProperty("R", "3"));
     final int W = Integer.parseInt(config.getProperty("W", "4"));
-    final int TIMEOUT_SECONDS = Integer.parseInt(config.getProperty("TIMEOUT_SECONDS", "5"));
+    final int TIMEOUT_SECONDS = Integer.parseInt(config.getProperty("TIMEOUT_SECONDS", "1")); // Client request timeout 
     final int INITIAL_NODES = Integer.parseInt(config.getProperty("INITIAL_NODES", "10"));
     autoMode = Boolean.parseBoolean(config.getProperty("AUTO_MODE", "false"));
 

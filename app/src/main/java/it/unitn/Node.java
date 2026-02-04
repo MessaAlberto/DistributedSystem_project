@@ -47,8 +47,8 @@ public class Node extends AbstractActor {
   private final Map<String, String> pendingDataTransferDescriptions = new LinkedHashMap<>();
 
   // dealy parameters
-  private static final long MIN_PROP_DELAY_MS = 10;
-  private static final long MAX_PROP_DELAY_MS = 60;
+  private static final long MIN_PROP_DELAY_MS = 20;
+  private static final long MAX_PROP_DELAY_MS = 100;
 
   // Keys that need to be recovered during JOIN/RECOVERY
   private final Set<Integer> recoveryKeysBuffer = new HashSet<>();
