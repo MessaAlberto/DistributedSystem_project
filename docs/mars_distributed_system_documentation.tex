@@ -1,0 +1,1338 @@
+\documentclass[a4paper,12pt]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{pgf-umlsd}
+\usepackage{float}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\geometry{margin=2.5cm}
+
+% Stile per il codice Java
+\lstdefinestyle{javastyle}{
+    language=Java,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    stringstyle=\color{red},
+    commentstyle=\color{green!60!black}\itshape,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+    tabsize=2,
+    showstringspaces=false
+}
+
+\lstset{style=javastyle}
+
+% Header e Footer
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{Mars Distributed Storage System}
+\fancyfoot[C]{\thepage}
+
+% Colori per i diagrammi
+\definecolor{clientcolor}{RGB}{100,149,237}
+\definecolor{nodecolor}{RGB}{144,238,144}
+\definecolor{managercolor}{RGB}{255,182,193}
+\definecolor{messagecolor}{RGB}{70,130,180}
+
+\title{
+    \vspace{2cm}
+    \textbf{\Huge Mars Distributed Storage System}\\
+    \vspace{1cm}
+    \Large Documentazione Tecnica delle Funzioni\\
+    \vspace{0.5cm}
+    \large Sistema di Storage Distribuito basato su Akka
+    \vspace{2cm}
+}
+\author{Documentazione del Progetto}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+% CAPITOLO 1: MAIN
+% ============================================================================
+\chapter{Main - Entry Point dell'Applicazione}
+
+\section{Panoramica}
+La classe \texttt{Main} rappresenta il punto di ingresso dell'applicazione. Si occupa di:
+\begin{itemize}
+    \item Caricare la configurazione dal file \texttt{config.properties}
+    \item Validare i parametri del quorum (N, R, W)
+    \item Inizializzare il sistema Akka
+    \item Eseguire la sequenza di test automatizzati
+\end{itemize}
+
+\section{Metodo main()}
+\begin{lstlisting}[caption={Metodo main - Entry point}]
+public static void main(String[] args) throws InterruptedException
+\end{lstlisting}
+
+\textbf{Descrizione:} Punto di ingresso dell'applicazione che:
+\begin{enumerate}
+    \item Carica i parametri di configurazione (N, R, W, TIMEOUT\_SECONDS, INITIAL\_NODES)
+    \item Verifica le regole del quorum: $R + W > N$ e $W > N/2$
+    \item Crea l'\texttt{ActorSystem} Akka denominato "MarsSystem"
+    \item Istanzia il \texttt{TestManager} come attore principale
+    \item Esegue sequenzialmente tutti i test di sistema
+\end{enumerate}
+
+\textbf{Parametri di configurazione:}
+\begin{itemize}
+    \item \textbf{N}: Fattore di replicazione (default: 5)
+    \item \textbf{R}: Quorum di lettura (default: 3)
+    \item \textbf{W}: Quorum di scrittura (default: 4)
+    \item \textbf{TIMEOUT\_SECONDS}: Timeout per le operazioni (default: 1)
+    \item \textbf{INITIAL\_NODES}: Numero iniziale di nodi (default: 10)
+\end{itemize}
+
+\section{Metodi di Test}
+
+\subsection{testSigleWriteReadScenario()}
+\begin{lstlisting}[caption={Test di scrittura e lettura singola}]
+private static void testSigleWriteReadScenario(ActorRef testManager)
+\end{lstlisting}
+\textbf{Scopo:} Verifica le operazioni base di Write e Read su una singola chiave.\\
+\textbf{Flusso:} Scrive key=25 con valore "HelloWorld", poi lo rilegge.
+
+\subsection{testJoin()}
+\begin{lstlisting}[caption={Test di JOIN di un nodo}]
+private static void testJoin(ActorRef testManager)
+\end{lstlisting}
+\textbf{Scopo:} Testa l'aggiunta dinamica di un nuovo nodo (node27) al sistema.
+
+\subsection{testLeave()}
+\begin{lstlisting}[caption={Test di LEAVE di un nodo}]
+private static void testLeave(ActorRef testManager)
+\end{lstlisting}
+\textbf{Scopo:} Testa la rimozione controllata di un nodo (node30) dal sistema.
+
+\subsection{testCrash()}
+\begin{lstlisting}[caption={Test di CRASH di un nodo}]
+private static void testCrash(ActorRef testManager)
+\end{lstlisting}
+\textbf{Scopo:} Simula il crash improvviso di un nodo (node40).
+
+\subsection{testRecover()}
+\begin{lstlisting}[caption={Test di RECOVER di un nodo}]
+private static void testRecover(ActorRef testManager)
+\end{lstlisting}
+\textbf{Scopo:} Testa il recupero di un nodo precedentemente crashato (node40).
+
+\subsection{testSequentialConsistencyScenario()}
+\textbf{Scopo:} Verifica la consistenza sequenziale tra più client che scrivono e leggono la stessa chiave.
+
+\subsection{testRecoverLostWritesScenario()}
+\textbf{Scopo:} Verifica che le scritture perse durante un crash vengano recuperate correttamente.
+
+\subsection{testConcurrentWritesSameKey()}
+\textbf{Scopo:} Testa il comportamento del sistema con scritture concorrenti sulla stessa chiave.
+
+\subsection{inputContinue()}
+\begin{lstlisting}[caption={Metodo per pausa interattiva}]
+public static void inputContinue()
+\end{lstlisting}
+\textbf{Descrizione:} In modalità manuale, attende l'input dell'utente prima di procedere. In modalità automatica (AUTO\_MODE=true), prosegue senza interruzioni.
+
+% ============================================================================
+% CAPITOLO 2: TEST MANAGER
+% ============================================================================
+\chapter{TestManager - Orchestratore del Sistema}
+
+\section{Panoramica}
+Il \texttt{TestManager} è l'attore centrale che:
+\begin{itemize}
+    \item Gestisce il ciclo di vita dei nodi (join/leave/crash/recover)
+    \item Coordina le richieste dei client
+    \item Mantiene lo stato globale del sistema
+    \item Orchestra gli scenari di test
+\end{itemize}
+
+\section{Struttura Dati Interna}
+
+\begin{lstlisting}[caption={Campi principali del TestManager}]
+private final List<ActorRef> clients;           // Lista dei client
+private final List<ActorRef> activeNodes;       // Nodi attivi
+private final List<ActorRef> crashedNodes;      // Nodi crashati
+private final Map<ActorRef, Integer> nodeIdMap; // Mappa ActorRef -> nodeId
+private final Map<String, List<String>> activeClientRequests; // Richieste in corso
+private boolean isViewChangedStable;            // Flag stabilita' vista
+\end{lstlisting}
+
+\section{Classi di Messaggi}
+
+\subsection{ClientRequest}
+\begin{lstlisting}[caption={Messaggio per richieste client}]
+public static class ClientRequest implements Serializable {
+    public final int clientIndex;  // Indice del client
+    public final int nodeId;       // ID nodo target (-1 = random)
+    public final int key;          // Chiave
+    public final String value;     // Valore (null = READ)
+    public CountDownLatch latch;   // Latch per sincronizzazione
+}
+\end{lstlisting}
+
+\subsection{NodeActionRequest}
+\begin{lstlisting}[caption={Messaggio per azioni sui nodi}]
+public static class NodeActionRequest implements Serializable {
+    public final String action;    // "join", "leave", "crash", "recover"
+    public Integer nodeId;         // ID specifico o null per random
+    public final CountDownLatch latch;
+}
+\end{lstlisting}
+
+\subsection{NodeActionResponse}
+\begin{lstlisting}[caption={Risposta alle azioni sui nodi}]
+public static class NodeActionResponse implements Serializable {
+    public final String action;
+    public final int nodeId;
+    public final boolean result;   // Successo/fallimento
+    public final String detail;    // Dettaglio opzionale
+}
+\end{lstlisting}
+
+\section{Metodi del Ciclo di Vita}
+
+\subsection{preStart()}
+\begin{lstlisting}[caption={Inizializzazione del TestManager}]
+@Override
+public void preStart()
+\end{lstlisting}
+\textbf{Descrizione:} Viene chiamato automaticamente all'avvio dell'attore.
+\begin{enumerate}
+    \item Crea \texttt{INITIAL\_NODES} nodi con ID multipli di 10 (0, 10, 20, ...)
+    \item Invia \texttt{JoinGroupMsg} a tutti i nodi per inizializzare la membership
+    \item Crea 3 client con accesso a tutti i nodi attivi
+    \item Logga lo stato iniziale del sistema
+\end{enumerate}
+
+\section{Handler dei Messaggi}
+
+\subsection{onClientRequest()}
+\begin{lstlisting}[caption={Gestione richieste client}]
+private void onClientRequest(ClientRequest msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Verifica che la vista sia stabile (\texttt{isViewChangedStable})
+    \item Registra la richiesta in \texttt{activeClientRequests}
+    \item Determina il nodo target (specificato o casuale)
+    \item Inoltra la richiesta (Read o Write) al client appropriato
+\end{itemize}
+
+\subsection{onNodeActionRequest()}
+\begin{lstlisting}[caption={Gestione azioni sui nodi}]
+private void onNodeActionRequest(NodeActionRequest msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Verifica che non ci siano view change o operazioni client in corso
+    \item Imposta il latch corrente per la sincronizzazione
+    \item Delega a \texttt{handleNodeAction()} per l'esecuzione
+\end{itemize}
+
+\subsection{onNodeActionResponse()}
+\begin{lstlisting}[caption={Gestione risposte azioni nodi}]
+private void onNodeActionResponse(NodeActionResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Logga il risultato dell'operazione (successo/fallimento)
+    \item Chiama \texttt{updateNodeStateAndClients()} per aggiornare lo stato
+    \item Imposta \texttt{isViewChangedStable = true}
+    \item Decrementa il latch se presente
+\end{itemize}
+
+\subsection{onClientResponse()}
+\begin{lstlisting}[caption={Gestione risposte client}]
+private void onClientResponse(Client.ClientResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Rimuove la richiesta completata da \texttt{activeClientRequests}
+    \item Verifica se il batch di richieste e' completato
+    \item Decrementa il latch appropriatamente
+\end{itemize}
+
+\subsection{onPrintStoreRequest() / onPrintStoreResponse()}
+\textbf{Descrizione:} Raccoglie e stampa il contenuto dello store di tutti i nodi attivi per debugging e verifica.
+
+\section{Metodi Helper}
+
+\subsection{handleNodeAction()}
+\begin{lstlisting}[caption={Esecuzione azioni sui nodi}]
+private void handleNodeAction(String action, Integer nodeId)
+\end{lstlisting}
+\textbf{Descrizione:} Switch principale per le azioni:
+\begin{itemize}
+    \item \textbf{join}: Crea nuovo nodo con \texttt{Node.props()} in modalita' joining
+    \item \textbf{leave/crash}: Trova il nodo target e invia \texttt{NodeAction}
+    \item \textbf{recover}: Trova il nodo crashato, seleziona bootstrap, invia \texttt{NodeAction}
+\end{itemize}
+
+\subsection{updateNodeStateAndClients()}
+\begin{lstlisting}[caption={Aggiornamento stato e notifica client}]
+private void updateNodeStateAndClients(String action, ActorRef node, Integer nodeId)
+\end{lstlisting}
+\textbf{Descrizione:} Aggiorna \texttt{activeNodes}, \texttt{crashedNodes}, \texttt{nodeIdMap} e notifica tutti i client con \texttt{UpdateNodeList}.
+
+\subsection{RingUtils (Inner Class)}
+\begin{lstlisting}[caption={Utility per operazioni sull'anello}]
+public class RingUtils {
+    public static ActorRef findSuccessorOfId(int id, List<ActorRef> list, ...)
+    public static ActorRef findPredecessorOfId(int id, List<ActorRef> list, ...)
+}
+\end{lstlisting}
+\textbf{Descrizione:} Metodi statici per trovare successore e predecessore nell'anello DHT.
+
+% ============================================================================
+% CAPITOLO 3: NODE
+% ============================================================================
+\chapter{Node - Nodo del Sistema Distribuito}
+
+\section{Panoramica}
+Il \texttt{Node} è l'attore principale del sistema distribuito. Implementa:
+\begin{itemize}
+    \item Storage key-value con versioning
+    \item Protocollo di quorum per read/write
+    \item Gestione della membership (join/leave/crash/recover)
+    \item Trasferimento dati durante i cambi di vista
+    \item Manutenzione della consistenza
+\end{itemize}
+
+\section{Struttura Dati Interna}
+
+\begin{lstlisting}[caption={Campi principali del Node}]
+private final int nodeId;                    // Identificatore univoco
+private final List<ActorRef> nodes;          // Vista della membership
+private final Map<ActorRef, Integer> nodeIdMap;
+private Mode mode;                           // IDLE, JOINING, RECOVERING, CRASHED
+private boolean serving;                     // Flag per accettare richieste
+
+private final Map<Integer, DataItem> store;  // Storage locale
+private final Map<Integer, ActorRef> writeLocks; // Lock per scritture
+
+private final int N, R, W;                   // Parametri del quorum
+private final int timeoutSeconds;
+\end{lstlisting}
+
+\subsection{DataItem}
+\begin{lstlisting}[caption={Struttura per i dati memorizzati}]
+public static class DataItem implements Serializable {
+    public final int version;
+    public final String value;
+}
+\end{lstlisting}
+
+\subsection{Stati del Nodo (Mode)}
+\begin{lstlisting}[caption={Enum degli stati}]
+private enum Mode {
+    IDLE,       // Operativo normale
+    JOINING,    // In fase di join
+    RECOVERING, // In fase di recovery
+    CRASHED     // Crashato (ignora messaggi)
+}
+\end{lstlisting}
+
+\section{Classi di Stato per Coordinazione}
+
+\subsection{WriteRequestState}
+\begin{lstlisting}[caption={Stato di una write in corso}]
+private class WriteRequestState {
+    public final int key;
+    public final String newValue;
+    public final ActorRef client;
+    public int newVersion = 0;
+    public final List<ActorRef> responsibleNodes;
+    public final Map<ActorRef, VersionResponse> versionReplies;
+    public Cancellable timeout;
+}
+\end{lstlisting}
+
+\subsection{ReadRequestState}
+\begin{lstlisting}[caption={Stato di una read in corso}]
+private class ReadRequestState {
+    public final int key;
+    public final ActorRef client;
+    public final Map<ActorRef, VersionResponse> versionReplies;
+    public final Cancellable timeout;
+}
+\end{lstlisting}
+
+\section{Classi di Messaggi}
+
+\subsection{Messaggi per Operazioni Client}
+\begin{itemize}
+    \item \textbf{ReadRequest}: Richiesta di lettura dal client
+    \item \textbf{WriteRequest}: Richiesta di scrittura dal client
+\end{itemize}
+
+\subsection{Messaggi per Protocollo di Quorum (Read)}
+\begin{itemize}
+    \item \textbf{GetVersionRead}: Richiesta versione per lettura
+    \item \textbf{VersionReadResponse}: Risposta con versione e valore
+\end{itemize}
+
+\subsection{Messaggi per Protocollo di Quorum (Write)}
+\begin{itemize}
+    \item \textbf{GetVersionWrite}: Richiesta versione per scrittura (acquisisce lock)
+    \item \textbf{VersionWriteResponse}: Risposta con versione corrente
+    \item \textbf{UpdateValue}: Comando di aggiornamento valore
+\end{itemize}
+
+\subsection{Messaggi di Timeout}
+\begin{itemize}
+    \item \textbf{WriteTimeout}: Timeout per operazione write
+    \item \textbf{ReadTimeout}: Timeout per operazione read
+    \item \textbf{JoinTimeout}: Timeout per operazione join
+    \item \textbf{RecoverTimeout}: Timeout per operazione recover
+\end{itemize}
+
+\subsection{Messaggi di Membership}
+\begin{itemize}
+    \item \textbf{NodeAction}: Comando per leave/crash/recover
+    \item \textbf{GetPeers}: Richiesta lista peer
+    \item \textbf{PeerResponse}: Risposta con lista peer
+    \item \textbf{ItemRequest}: Richiesta trasferimento dati
+    \item \textbf{DataItemsBatch}: Batch di dati trasferiti
+    \item \textbf{AnnounceJoin}: Annuncio di nuovo nodo
+    \item \textbf{AnnounceLeave}: Annuncio di nodo uscente
+    \item \textbf{TransferData}: Trasferimento singolo dato
+\end{itemize}
+
+\section{Handler per Operazioni Read}
+
+\subsection{onReadRequest()}
+\begin{lstlisting}[caption={Gestione richiesta Read (coordinatore)}]
+private void onReadRequest(ReadRequest msg)
+\end{lstlisting}
+\textbf{Descrizione:} Agisce come coordinatore per una lettura:
+\begin{enumerate}
+    \item Verifica che il nodo stia servendo (\texttt{serving == true})
+    \item Verifica assenza di write lock sulla chiave
+    \item Calcola i nodi responsabili con \texttt{getResponsibleNodes()}
+    \item Invia \texttt{GetVersionRead} a tutti i nodi responsabili
+    \item Crea \texttt{ReadRequestState} con timeout
+\end{enumerate}
+
+\subsection{onGetVersionRead()}
+\begin{lstlisting}[caption={Risposta a richiesta versione per lettura}]
+private void onGetVersionRead(GetVersionRead msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Verifica assenza di write lock
+    \item Recupera versione e valore dallo store locale
+    \item Invia \texttt{VersionReadResponse} al coordinatore
+\end{itemize}
+
+\subsection{onVersionReadResponse()}
+\begin{lstlisting}[caption={Gestione risposte al quorum di lettura}]
+private void onVersionReadResponse(VersionReadResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{enumerate}
+    \item Registra la risposta nel \texttt{ReadRequestState}
+    \item Quando raggiunge R risposte (quorum):
+    \begin{itemize}
+        \item Seleziona la versione massima
+        \item Aggiorna lo store locale se necessario
+        \item Invia \texttt{ReadResponse} al client
+        \item Cancella timeout e pulisce lo stato
+    \end{itemize}
+\end{enumerate}
+
+\section{Handler per Operazioni Write}
+
+\subsection{onWriteRequest()}
+\begin{lstlisting}[caption={Gestione richiesta Write (coordinatore)}]
+private void onWriteRequest(WriteRequest msg)
+\end{lstlisting}
+\textbf{Descrizione:} Agisce come coordinatore per una scrittura:
+\begin{enumerate}
+    \item Verifica che il nodo stia servendo
+    \item Verifica assenza di write lock esistente sulla chiave
+    \item Calcola i nodi responsabili
+    \item Invia \texttt{GetVersionWrite} a tutti i nodi responsabili
+    \item Crea \texttt{WriteRequestState} con timeout
+\end{enumerate}
+
+\subsection{onGetVersionWrite()}
+\begin{lstlisting}[caption={Risposta a richiesta versione per scrittura}]
+private void onGetVersionWrite(GetVersionWrite msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Verifica assenza di lock esistente
+    \item \textbf{Acquisisce il write lock} per la chiave
+    \item Recupera versione corrente
+    \item Invia \texttt{VersionWriteResponse} al coordinatore
+\end{itemize}
+
+\subsection{onVersionWriteResponse()}
+\begin{lstlisting}[caption={Gestione risposte al quorum di scrittura}]
+private void onVersionWriteResponse(VersionWriteResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{enumerate}
+    \item Registra la risposta
+    \item Quando raggiunge W risposte (quorum) e \texttt{newVersion == 0}:
+    \begin{itemize}
+        \item Calcola \texttt{newVersion = maxVersion + 1}
+        \item Invia \texttt{UpdateValue} a tutti i nodi responsabili
+        \item Invia \texttt{WriteResponse} al client
+        \item Rilascia lock, cancella timeout, pulisce stato
+    \end{itemize}
+\end{enumerate}
+
+\subsection{onUpdateValue()}
+\begin{lstlisting}[caption={Applicazione aggiornamento valore}]
+private void onUpdateValue(UpdateValue msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Verifica che il lock sia detenuto dal sender
+    \item Rilascia il write lock
+    \item Aggiorna lo store se la versione e' $\geq$ quella corrente
+\end{itemize}
+
+\section{Handler per Timeout}
+
+\subsection{onWriteTimeout()}
+\begin{lstlisting}[caption={Gestione timeout scrittura}]
+private void onWriteTimeout(WriteTimeout msg)
+\end{lstlisting}
+\textbf{Descrizione:} Se il quorum W non e' stato raggiunto:
+\begin{itemize}
+    \item Rilascia il lock
+    \item Invia \texttt{OperationFailed} ai nodi responsabili
+    \item Invia \texttt{OperationFailed} al client
+\end{itemize}
+
+\subsection{onReadTimeout()}
+\begin{lstlisting}[caption={Gestione timeout lettura}]
+private void onReadTimeout(ReadTimeout msg)
+\end{lstlisting}
+\textbf{Descrizione:} Se il quorum R non e' stato raggiunto:
+\begin{itemize}
+    \item Se e' una read di manutenzione, chiama \texttt{failMembershipAction()}
+    \item Altrimenti invia \texttt{OperationFailed} al client
+\end{itemize}
+
+\section{Handler per Membership}
+
+\subsection{onNodeAction()}
+\begin{lstlisting}[caption={Gestione azioni sul nodo}]
+private void onNodeAction(NodeAction msg)
+\end{lstlisting}
+\textbf{Descrizione:} Switch per le azioni:
+
+\textbf{LEAVE:}
+\begin{enumerate}
+    \item Imposta mode = CRASHED, serving = false
+    \item Per ogni chiave nello store, trasferisce ai nuovi responsabili
+    \item Annuncia la leave a tutti i peer
+    \item Ferma l'attore
+\end{enumerate}
+
+\textbf{CRASH:}
+\begin{enumerate}
+    \item Imposta mode = CRASHED, serving = false
+    \item Passa al behavior \texttt{crashedReceive()}
+\end{enumerate}
+
+\textbf{RECOVER:}
+\begin{enumerate}
+    \item Imposta mode = RECOVERING
+    \item Invia \texttt{GetPeers} al nodo bootstrap
+    \item Avvia timeout per il recovery
+\end{enumerate}
+
+\subsection{onGetPeers()}
+\begin{lstlisting}[caption={Risposta alla richiesta peer}]
+private void onGetPeers(GetPeers msg)
+\end{lstlisting}
+\textbf{Descrizione:} Invia \texttt{PeerResponse} con la vista corrente della membership.
+
+\subsection{onPeerResponse()}
+\begin{lstlisting}[caption={Gestione risposta peer}]
+private void onPeerResponse(PeerResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+
+\textbf{Durante JOIN:}
+\begin{enumerate}
+    \item Aggiorna la vista locale
+    \item Trova il successore nell'anello
+    \item Invia \texttt{ItemRequest} al successore
+\end{enumerate}
+
+\textbf{Durante RECOVER:}
+\begin{enumerate}
+    \item Aggiorna la vista locale
+    \item Trova successore e predecessore
+    \item Invia \texttt{ItemRequest} a entrambi
+\end{enumerate}
+
+\subsection{onItemRequest()}
+\begin{lstlisting}[caption={Gestione richiesta trasferimento dati}]
+private void onItemRequest(ItemRequest msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Calcola quali chiavi il nuovo nodo dovrebbe avere
+    \item Crea un batch con le chiavi appropriate
+    \item Invia \texttt{DataItemsBatch} al richiedente
+\end{itemize}
+
+\subsection{onDataItemsBatch()}
+\begin{lstlisting}[caption={Gestione ricezione batch dati}]
+private void onDataItemsBatch(DataItemsBatch msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+
+\textbf{Durante JOIN:}
+\begin{enumerate}
+    \item Pulisce lo store locale
+    \item Installa i dati ricevuti
+    \item Avvia le maintenance read con \texttt{startMaintenanceReads()}
+\end{enumerate}
+
+\textbf{Durante RECOVER:}
+\begin{enumerate}
+    \item Installa i dati ricevuti (merge con versione)
+    \item Attende 2 risposte (successore + predecessore)
+    \item Esegue \texttt{pruneKeysNotResponsible()}
+    \item Avvia le maintenance read
+\end{enumerate}
+
+\subsection{onAnnounceJoin()}
+\begin{lstlisting}[caption={Gestione annuncio join}]
+private void onAnnounceJoin(AnnounceJoin msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Aggiunge il nuovo nodo alla vista locale
+    \item Esegue \texttt{pruneKeysNotResponsible()} per rimuovere chiavi non piu' di competenza
+\end{itemize}
+
+\subsection{onAnnounceLeave()}
+\begin{lstlisting}[caption={Gestione annuncio leave}]
+private void onAnnounceLeave(AnnounceLeave msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Rimuove il nodo dalla vista locale
+    \item Esegue \texttt{pruneKeysNotResponsible()}
+\end{itemize}
+
+\section{Metodi Helper Critici}
+
+\subsection{getResponsibleNodes()}
+\begin{lstlisting}[caption={Calcolo nodi responsabili}]
+private List<ActorRef> getResponsibleNodes(int key, List<ActorRef> nodes,
+                                           Map<ActorRef, Integer> nodeIdMap)
+\end{lstlisting}
+\textbf{Descrizione:} Implementa la logica dell'anello DHT:
+\begin{enumerate}
+    \item Ordina i nodi per ID
+    \item Trova il primo nodo con ID $\geq$ key
+    \item Restituisce N nodi consecutivi (con wrap-around)
+\end{enumerate}
+
+\subsection{pruneKeysNotResponsible()}
+\begin{lstlisting}[caption={Rimozione chiavi non di competenza}]
+private void pruneKeysNotResponsible()
+\end{lstlisting}
+\textbf{Descrizione:} Per ogni chiave nello store, verifica se questo nodo e' ancora tra i responsabili. Se no, rimuove la chiave.
+
+\subsection{startMaintenanceReads()}
+\begin{lstlisting}[caption={Avvio letture di manutenzione}]
+private void startMaintenanceReads(Set<Integer> keys)
+\end{lstlisting}
+\textbf{Descrizione:} Durante JOIN/RECOVER, esegue read quorum su tutte le chiavi ricevute per garantire la consistenza.
+
+\subsection{completeMaintenanceIfDone()}
+\begin{lstlisting}[caption={Completamento manutenzione}]
+private void completeMaintenanceIfDone()
+\end{lstlisting}
+\textbf{Descrizione:} Quando tutte le maintenance read sono completate:
+\begin{itemize}
+    \item Annuncia il join agli altri nodi
+    \item Imposta mode = IDLE, serving = true
+    \item Passa al behavior \texttt{activeReceive()}
+    \item Notifica il TestManager
+\end{itemize}
+
+\subsection{sendWithRandomDelay()}
+\begin{lstlisting}[caption={Invio messaggi con ritardo simulato}]
+private void sendWithRandomDelay(ActorRef target, Object message)
+\end{lstlisting}
+\textbf{Descrizione:} Simula latenza di rete con ritardo casuale tra 20-100ms.
+
+\section{Behaviors (Macchine a Stati)}
+
+In Akka, un \textit{behavior} definisce l'insieme di messaggi che un attore e' in grado di gestire in un determinato stato. Il pattern \texttt{getContext().become(newBehavior)} permette di cambiare dinamicamente il comportamento dell'attore, implementando una macchina a stati. Il Node utilizza tre behavior distinti per gestire le diverse fasi del suo ciclo di vita.
+
+\subsection{activeReceive()}
+\begin{lstlisting}[caption={Behavior attivo - operazioni normali}]
+private Receive activeReceive() {
+    return receiveBuilder()
+        .match(JoinGroupMsg.class, this::onJoinGroupMsg)
+        .match(ReadRequest.class, this::onReadRequest)
+        .match(WriteRequest.class, this::onWriteRequest)
+        .match(GetVersionRead.class, this::onGetVersionRead)
+        .match(VersionReadResponse.class, this::onVersionReadResponse)
+        .match(GetVersionWrite.class, this::onGetVersionWrite)
+        .match(VersionWriteResponse.class, this::onVersionWriteResponse)
+        .match(UpdateValue.class, this::onUpdateValue)
+        .match(WriteTimeout.class, this::onWriteTimeout)
+        .match(ReadTimeout.class, this::onReadTimeout)
+        // ... altri handler per membership e trasferimento
+        .build();
+}
+\end{lstlisting}
+
+\textbf{Stato:} Operativo normale (mode = IDLE, serving = true)
+
+\textbf{Descrizione:} Questo e' il behavior principale del nodo, attivo quando il nodo e' completamente operativo e fa parte dell'anello DHT. E' il behavior iniziale restituito da \texttt{createReceive()} e quello a cui il nodo ritorna dopo aver completato con successo un JOIN o RECOVER.
+
+\textbf{Messaggi gestiti:}
+\begin{itemize}
+    \item \textbf{Operazioni client:} ReadRequest, WriteRequest
+    \item \textbf{Protocollo quorum (read):} GetVersionRead, VersionReadResponse
+    \item \textbf{Protocollo quorum (write):} GetVersionWrite, VersionWriteResponse, UpdateValue
+    \item \textbf{Timeout:} WriteTimeout, ReadTimeout
+    \item \textbf{Membership:} JoinGroupMsg, NodeAction (leave/crash), GetPeers, AnnounceJoin, AnnounceLeave
+    \item \textbf{Trasferimento dati:} ItemRequest, TransferData, OperationFailed
+\end{itemize}
+
+\subsection{joiningRecoveringReceive()}
+\begin{lstlisting}[caption={Behavior di join/recovery}]
+private Receive joiningRecoveringReceive() {
+    return receiveBuilder()
+        .match(JoinTimeout.class, this::onJoinTimeout)
+        .match(RecoverTimeout.class, this::onRecoverTimeout)
+        .match(PeerResponse.class, this::onPeerResponse)
+        .match(DataItemsBatch.class, this::onDataItemsBatch)
+        .match(VersionReadResponse.class, this::onVersionReadResponse)
+        .match(ReadTimeout.class, this::onReadTimeout)
+        .match(ReadRequest.class, this::onReadRequest)
+        .match(WriteRequest.class, this::onWriteRequest)
+        .build();
+}
+\end{lstlisting}
+
+\textbf{Stato:} JOIN o RECOVER in corso (mode = JOINING o RECOVERING, serving = false)
+
+\textbf{Descrizione:} Questo behavior viene attivato quando un nodo sta entrando nell'anello (JOIN) o sta recuperando dopo un crash (RECOVER). Il nodo si trova in una fase transitoria in cui deve acquisire i dati dai peer esistenti e sincronizzarsi con il sistema. Durante questo stato, il flag \texttt{serving} e' \texttt{false}, quindi le richieste client vengono rifiutate.
+
+\textbf{Messaggi gestiti:}
+\begin{itemize}
+    \item \textbf{Timeout membership:} JoinTimeout, RecoverTimeout - per rilevare fallimenti nel processo di join/recovery
+    \item \textbf{Acquisizione dati:} PeerResponse (lista peer dal bootstrap), DataItemsBatch (dati trasferiti dai peer)
+    \item \textbf{Maintenance reads:} VersionReadResponse, ReadTimeout - per le letture di manutenzione che garantiscono la consistenza
+    \item \textbf{Richieste client (rifiutate):} ReadRequest, WriteRequest - gestite ma rifiutate perche' serving = false
+\end{itemize}
+
+\textbf{Transizioni:}
+\begin{itemize}
+    \item $\rightarrow$ \texttt{activeReceive()}: quando \texttt{completeMaintenanceIfDone()} completa con successo
+    \item $\rightarrow$ \texttt{crashedReceive()}: se si verifica un timeout durante il join/recovery (fallimento)
+\end{itemize}
+
+\subsection{crashedReceive()}
+\begin{lstlisting}[caption={Behavior di crash - ignora quasi tutto}]
+private Receive crashedReceive() {
+    return receiveBuilder()
+        .match(RecoverTimeout.class, this::onRecoverTimeout)
+        .match(NodeAction.class, this::onNodeAction)
+        .matchAny(m -> { /* drop */ })
+        .build();
+}
+\end{lstlisting}
+
+\textbf{Stato:} Nodo crashato (mode = CRASHED, serving = false)
+
+\textbf{Descrizione:} Questo behavior simula un nodo che ha subito un crash. In un sistema reale, un nodo crashato non sarebbe in grado di eseguire alcun codice. Nel nostro modello di simulazione, il nodo rimane attivo ma ignora deliberatamente tutti i messaggi tranne quelli necessari per il recovery. Questo permette di testare il comportamento del sistema in presenza di fallimenti senza dover effettivamente terminare e ricreare gli attori.
+
+\textbf{Messaggi gestiti:}
+\begin{itemize}
+    \item \textbf{NodeAction("recover"):} unico messaggio che puo' far uscire il nodo dallo stato di crash, avviando il processo di recovery
+    \item \textbf{RecoverTimeout:} gestisce il timeout nel caso il recovery fosse gia' stato avviato
+    \item \textbf{Tutti gli altri messaggi:} vengono silenziosamente scartati da \texttt{matchAny()}
+\end{itemize}
+
+\textbf{Transizioni:}
+\begin{itemize}
+    \item $\rightarrow$ \texttt{joiningRecoveringReceive()}: quando riceve NodeAction("recover") e inizia il processo di recovery
+\end{itemize}
+
+\textbf{Nota implementativa:} Il pattern \texttt{matchAny(m -> \{\})} e' fondamentale per evitare che messaggi non gestiti causino errori o warning nei log di Akka. Senza questo handler, Akka loggerebbe un "unhandled message" per ogni messaggio ricevuto.
+
+% ============================================================================
+% CAPITOLO 4: CLIENT
+% ============================================================================
+\chapter{Client - Interfaccia Utente}
+
+\section{Panoramica}
+Il \texttt{Client} è l'attore che rappresenta un client esterno al sistema. Si occupa di:
+\begin{itemize}
+    \item Inoltrare richieste Read/Write ai nodi
+    \item Gestire timeout delle operazioni
+    \item Notificare il manager dei risultati
+    \item Mantenere aggiornata la lista dei nodi disponibili
+\end{itemize}
+
+\section{Struttura Dati Interna}
+
+\begin{lstlisting}[caption={Campi principali del Client}]
+private final List<ActorRef> nodes;                      // Nodi disponibili
+private final Map<String, Cancellable> pendingRequests;  // Richieste in corso
+private final int timeoutSeconds;                        // Timeout (2x del nodo)
+private final ActorRef manager;                          // Riferimento al manager
+\end{lstlisting}
+
+\section{Classi di Messaggi}
+
+\subsection{Write}
+\begin{lstlisting}[caption={Messaggio di scrittura}]
+public static class Write implements Serializable {
+    public ActorRef cordNode;  // Nodo coordinatore (null = random)
+    public final int key;
+    public final String value;
+}
+\end{lstlisting}
+
+\subsection{Read}
+\begin{lstlisting}[caption={Messaggio di lettura}]
+public static class Read implements Serializable {
+    public ActorRef cordNode;  // Nodo coordinatore (null = random)
+    public final int key;
+}
+\end{lstlisting}
+
+\subsection{WriteResponse / ReadResponse}
+\begin{lstlisting}[caption={Risposte alle operazioni}]
+public static class WriteResponse implements Serializable {
+    public final int key;
+    public final String value;
+    public final int version;
+}
+
+public static class ReadResponse implements Serializable {
+    public final int key;
+    public final String value;
+    public final int version;
+}
+\end{lstlisting}
+
+\subsection{UpdateNodeList}
+\begin{lstlisting}[caption={Aggiornamento lista nodi}]
+public static class UpdateNodeList implements Serializable {
+    public final List<ActorRef> newNodes;
+}
+\end{lstlisting}
+
+\subsection{ClientResponse}
+\begin{lstlisting}[caption={Risposta al manager}]
+public static class ClientResponse implements Serializable {
+    public final String id;       // ID richiesta
+    public final boolean success;
+    public final String message;
+}
+\end{lstlisting}
+
+\section{Handler dei Messaggi}
+
+\subsection{onWrite()}
+\begin{lstlisting}[caption={Gestione richiesta Write}]
+private void onWrite(Write msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{enumerate}
+    \item Verifica disponibilita' nodi
+    \item Verifica che non ci sia gia' una richiesta identica in corso
+    \item Seleziona nodo target (specificato o random)
+    \item Invia \texttt{WriteRequest} al nodo
+    \item Avvia timeout con \texttt{startRequest()}
+\end{enumerate}
+
+\subsection{onRead()}
+\begin{lstlisting}[caption={Gestione richiesta Read}]
+private void onRead(Read msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{enumerate}
+    \item Verifica disponibilita' nodi
+    \item Verifica assenza richieste duplicate
+    \item Seleziona nodo target
+    \item Invia \texttt{ReadRequest} al nodo
+    \item Avvia timeout
+\end{enumerate}
+
+\subsection{onWriteResponse()}
+\begin{lstlisting}[caption={Gestione risposta Write}]
+private void onWriteResponse(WriteResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Logga la risposta ricevuta
+    \item Cancella il timeout con \texttt{cancelRequest()}
+    \item Invia \texttt{ClientResponse} con successo al manager
+\end{itemize}
+
+\subsection{onReadResponse()}
+\begin{lstlisting}[caption={Gestione risposta Read}]
+private void onReadResponse(ReadResponse msg)
+\end{lstlisting}
+\textbf{Descrizione:} Analogo a \texttt{onWriteResponse()}, formatta il messaggio con valore e versione.
+
+\subsection{onUpdateNodeList()}
+\begin{lstlisting}[caption={Aggiornamento lista nodi}]
+private void onUpdateNodeList(UpdateNodeList msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Sincronizza l'accesso alla lista nodi
+    \item Sostituisce completamente la lista con quella nuova
+    \item Logga il numero di nodi attivi
+\end{itemize}
+
+\subsection{onOperationFailed()}
+\begin{lstlisting}[caption={Gestione fallimento operazione}]
+private void onOperationFailed(Node.OperationFailed msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Cancella il timeout pendente
+    \item Logga l'errore
+    \item Invia \texttt{ClientResponse} con fallimento al manager
+\end{itemize}
+
+\subsection{onOperationTimeout()}
+\begin{lstlisting}[caption={Gestione timeout operazione}]
+private void onOperationTimeout(OperationTimeout msg)
+\end{lstlisting}
+\textbf{Descrizione:}
+\begin{itemize}
+    \item Rimuove la richiesta pendente
+    \item Logga il timeout
+    \item Invia \texttt{ClientResponse} con fallimento (nodo probabilmente crashato)
+\end{itemize}
+
+\section{Metodi Helper}
+
+\subsection{startRequest()}
+\begin{lstlisting}[caption={Avvio richiesta con timeout}]
+private void startRequest(String requestId, Object request)
+\end{lstlisting}
+\textbf{Descrizione:} Schedula un \texttt{OperationTimeout} e lo salva in \texttt{pendingRequests}.
+
+\subsection{cancelRequest()}
+\begin{lstlisting}[caption={Cancellazione timeout}]
+private void cancelRequest(String requestId)
+\end{lstlisting}
+\textbf{Descrizione:} Rimuove e cancella il timeout schedulato per una richiesta.
+
+\subsection{sendResponse()}
+\begin{lstlisting}[caption={Invio risposta al manager}]
+private void sendResponse(String id, boolean success, String message)
+\end{lstlisting}
+\textbf{Descrizione:} Crea e invia \texttt{ClientResponse} al manager.
+
+% ============================================================================
+% CAPITOLO 5: DIAGRAMMI DI SEQUENZA
+% ============================================================================
+\chapter{Diagrammi di Sequenza delle Operazioni}
+
+\section{Operazione READ}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2.5cm,
+    every node/.style={font=\small},
+    actor/.style={rectangle, draw, fill=blue!20, minimum width=1.5cm, minimum height=0.8cm},
+    message/.style={->, >=stealth, thick},
+    note/.style={rectangle, draw, dashed, fill=yellow!20, font=\footnotesize, align=left}
+]
+
+% Attori
+\node[actor, fill=clientcolor] (client) at (0,0) {Client};
+\node[actor, fill=nodecolor] (coord) at (4,0) {Coordinatore};
+\node[actor, fill=nodecolor] (replica1) at (8,0) {Replica 1};
+\node[actor, fill=nodecolor] (replica2) at (11,0) {Replica 2};
+
+% Linee di vita
+\draw[dashed] (client) -- (0,-12);
+\draw[dashed] (coord) -- (4,-12);
+\draw[dashed] (replica1) -- (8,-12);
+\draw[dashed] (replica2) -- (11,-12);
+
+% Messaggi
+\draw[message, blue] (0,-1) -- node[above, font=\footnotesize] {1. ReadRequest(key)} (4,-1.5);
+\draw[message, orange] (4,-2) -- node[above, font=\footnotesize] {2. GetVersionRead} (8,-2.5);
+\draw[message, orange] (4,-2.5) -- node[below, font=\footnotesize] {2. GetVersionRead} (11,-3);
+\draw[message, green!50!black] (8,-4) -- node[above, font=\footnotesize] {3. VersionReadResponse} (4,-4.5);
+\draw[message, green!50!black] (11,-5) -- node[above, font=\footnotesize] {3. VersionReadResponse} (4,-5.5);
+
+% Nota quorum
+\node[note] at (6,-6.5) {Quorum R raggiunto:\\seleziona max version};
+
+\draw[message, blue, thick] (4,-8) -- node[above, font=\footnotesize] {4. ReadResponse(value, version)} (0,-8.5);
+
+% Funzioni chiamate
+\node[note, fill=green!10] at (14,-1.5) {\textbf{onReadRequest()}\\Crea ReadRequestState};
+\node[note, fill=green!10] at (14,-4) {\textbf{onGetVersionRead()}\\Legge store locale};
+\node[note, fill=green!10] at (14,-6) {\textbf{onVersionReadResponse()}\\Raccoglie risposte};
+
+\end{tikzpicture}
+\caption{Flusso dell'operazione READ}
+\end{figure}
+
+\textbf{Sequenza delle funzioni:}
+\begin{enumerate}
+    \item \texttt{Client.onRead()} $\rightarrow$ invia \texttt{ReadRequest}
+    \item \texttt{Node.onReadRequest()} $\rightarrow$ calcola nodi responsabili, invia \texttt{GetVersionRead}
+    \item \texttt{Node.onGetVersionRead()} $\rightarrow$ legge dallo store, risponde con versione
+    \item \texttt{Node.onVersionReadResponse()} $\rightarrow$ raccoglie risposte, al quorum R risponde al client
+    \item \texttt{Client.onReadResponse()} $\rightarrow$ notifica il manager
+\end{enumerate}
+
+\newpage
+\section{Operazione WRITE}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2.5cm,
+    every node/.style={font=\small},
+    actor/.style={rectangle, draw, fill=blue!20, minimum width=1.5cm, minimum height=0.8cm},
+    message/.style={->, >=stealth, thick},
+    note/.style={rectangle, draw, dashed, fill=yellow!20, font=\footnotesize, align=left}
+]
+
+% Attori
+\node[actor, fill=clientcolor] (client) at (0,0) {Client};
+\node[actor, fill=nodecolor] (coord) at (4,0) {Coordinatore};
+\node[actor, fill=nodecolor] (replica1) at (8,0) {Replica 1};
+\node[actor, fill=nodecolor] (replica2) at (11,0) {Replica 2};
+
+% Linee di vita
+\draw[dashed] (client) -- (0,-14);
+\draw[dashed] (coord) -- (4,-14);
+\draw[dashed] (replica1) -- (8,-14);
+\draw[dashed] (replica2) -- (11,-14);
+
+% Fase 1: Raccolta versioni
+\draw[message, blue] (0,-1) -- node[above, font=\footnotesize] {1. WriteRequest(key,value)} (4,-1.5);
+\draw[message, orange] (4,-2) -- node[above, font=\footnotesize] {2. GetVersionWrite} (8,-2.5);
+\draw[message, orange] (4,-2.5) -- node[below, font=\footnotesize] {2. GetVersionWrite} (11,-3);
+
+% Nota lock
+\node[note, fill=red!10] at (10,-3.8) {Lock acquisito};
+
+\draw[message, green!50!black] (8,-4.5) -- node[above, font=\footnotesize] {3. VersionWriteResponse} (4,-5);
+\draw[message, green!50!black] (11,-5.5) -- node[above, font=\footnotesize] {3. VersionWriteResponse} (4,-6);
+
+% Nota quorum
+\node[note] at (1,-7) {Quorum W raggiunto:\\newVersion = max+1};
+
+% Fase 2: Propagazione
+\draw[message, red] (4,-8) -- node[above, font=\footnotesize] {4. UpdateValue(key,v,value)} (8,-8.5);
+\draw[message, red] (4,-8.5) -- node[below, font=\footnotesize] {4. UpdateValue} (11,-9);
+
+\draw[message, blue, thick] (4,-10) -- node[above, font=\footnotesize] {5. WriteResponse(key,value,v)} (0,-10.5);
+
+% Funzioni chiamate
+\node[note, fill=green!10] at (14,-1.5) {\textbf{onWriteRequest()}\\Crea WriteRequestState};
+\node[note, fill=green!10] at (14,-4) {\textbf{onGetVersionWrite()}\\Acquisisce lock};
+\node[note, fill=green!10] at (14,-6.5) {\textbf{onVersionWriteResponse()}\\Calcola nuova versione};
+\node[note, fill=green!10] at (14,-9) {\textbf{onUpdateValue()}\\Scrive e rilascia lock};
+
+\end{tikzpicture}
+\caption{Flusso dell'operazione WRITE}
+\end{figure}
+
+\textbf{Sequenza delle funzioni:}
+\begin{enumerate}
+    \item \texttt{Client.onWrite()} $\rightarrow$ invia \texttt{WriteRequest}
+    \item \texttt{Node.onWriteRequest()} $\rightarrow$ calcola responsabili, invia \texttt{GetVersionWrite}
+    \item \texttt{Node.onGetVersionWrite()} $\rightarrow$ \textbf{acquisisce write lock}, risponde con versione
+    \item \texttt{Node.onVersionWriteResponse()} $\rightarrow$ al quorum W calcola newVersion, invia \texttt{UpdateValue}
+    \item \texttt{Node.onUpdateValue()} $\rightarrow$ aggiorna store, \textbf{rilascia lock}
+    \item \texttt{Client.onWriteResponse()} $\rightarrow$ notifica il manager
+\end{enumerate}
+
+\newpage
+\section{Operazione JOIN}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm,
+    every node/.style={font=\small},
+    actor/.style={rectangle, draw, fill=blue!20, minimum width=1.5cm, minimum height=0.8cm},
+    message/.style={->, >=stealth, thick},
+    note/.style={rectangle, draw, dashed, fill=yellow!20, font=\footnotesize, align=left}
+]
+
+% Attori
+\node[actor, fill=managercolor] (manager) at (0,0) {TestManager};
+\node[actor, fill=nodecolor] (newnode) at (4,0) {Nuovo Nodo};
+\node[actor, fill=nodecolor] (bootstrap) at (8,0) {Bootstrap};
+\node[actor, fill=nodecolor] (successor) at (12,0) {Successore};
+
+% Linee di vita
+\draw[dashed] (manager) -- (0,-16);
+\draw[dashed] (newnode) -- (4,-16);
+\draw[dashed] (bootstrap) -- (8,-16);
+\draw[dashed] (successor) -- (12,-16);
+
+% Messaggi
+\node[note, fill=blue!10] at (4,-1.5) {preStart()\\mode=JOINING};
+
+\draw[message, blue] (4,-2.5) -- node[above, font=\footnotesize] {1. GetPeers} (8,-3);
+\draw[message, green!50!black] (8,-3.5) -- node[above, font=\footnotesize] {2. PeerResponse(nodes)} (4,-4);
+
+\node[note] at (2,-5) {Trova successore\\nell'anello};
+
+\draw[message, orange] (4,-6) -- node[above, font=\footnotesize] {3. ItemRequest} (12,-6.5);
+\draw[message, green!50!black] (12,-7.5) -- node[above, font=\footnotesize] {4. DataItemsBatch} (4,-8);
+
+\node[note, fill=orange!10] at (6,-9) {Maintenance reads\\per ogni chiave ricevuta};
+
+\draw[message, purple] (4,-10.5) -- node[above, font=\footnotesize] {5. AnnounceJoin} (8,-11);
+\draw[message, purple] (4,-11) -- node[below, font=\footnotesize] {5. AnnounceJoin} (12,-11.5);
+
+\draw[message, blue, thick] (4,-13) -- node[above, font=\footnotesize] {6. NodeActionResponse} (0,-13.5);
+
+% Funzioni
+\node[note, fill=green!10] at (15,-3) {\textbf{onGetPeers()}};
+\node[note, fill=green!10] at (15,-5) {\textbf{onPeerResponse()}\\trova successore};
+\node[note, fill=green!10] at (15,-7) {\textbf{onItemRequest()}\\prepara batch};
+\node[note, fill=green!10] at (15,-9) {\textbf{onDataItemsBatch()}\\startMaintenanceReads()};
+\node[note, fill=green!10] at (15,-12) {\textbf{completeMaintenanceIfDone()}\\mode=IDLE};
+
+\end{tikzpicture}
+\caption{Flusso dell'operazione JOIN}
+\end{figure}
+
+\textbf{Sequenza delle funzioni:}
+\begin{enumerate}
+    \item \texttt{Node.preStart()} $\rightarrow$ invia \texttt{GetPeers} al bootstrap
+    \item \texttt{Node.onGetPeers()} $\rightarrow$ risponde con lista peer
+    \item \texttt{Node.onPeerResponse()} $\rightarrow$ trova successore, invia \texttt{ItemRequest}
+    \item \texttt{Node.onItemRequest()} $\rightarrow$ calcola chiavi da trasferire
+    \item \texttt{Node.onDataItemsBatch()} $\rightarrow$ installa dati, avvia \texttt{startMaintenanceReads()}
+    \item \texttt{Node.completeMaintenanceIfDone()} $\rightarrow$ invia \texttt{AnnounceJoin}, notifica manager
+\end{enumerate}
+
+\newpage
+\section{Operazione LEAVE}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm,
+    every node/.style={font=\small},
+    actor/.style={rectangle, draw, fill=blue!20, minimum width=1.5cm, minimum height=0.8cm},
+    message/.style={->, >=stealth, thick},
+    note/.style={rectangle, draw, dashed, fill=yellow!20, font=\footnotesize, align=left}
+]
+
+% Attori
+\node[actor, fill=managercolor] (manager) at (0,0) {TestManager};
+\node[actor, fill=nodecolor] (leaving) at (4,0) {Nodo Uscente};
+\node[actor, fill=nodecolor] (peer1) at (8,0) {Peer 1};
+\node[actor, fill=nodecolor] (peer2) at (12,0) {Peer 2};
+
+% Linee di vita
+\draw[dashed] (manager) -- (0,-12);
+\draw[dashed] (leaving) -- (4,-12);
+\draw[dashed] (peer1) -- (8,-12);
+\draw[dashed] (peer2) -- (12,-12);
+
+% Messaggi
+\draw[message, blue] (0,-1) -- node[above, font=\footnotesize] {1. NodeAction("leave")} (4,-1.5);
+
+\node[note, fill=red!10] at (5,-2.5) {mode=CRASHED\\serving=false};
+
+\draw[message, orange] (4,-4) -- node[above, font=\footnotesize] {2. TransferData(key,v,val)} (8,-4.5);
+\draw[message, orange] (4,-4.5) -- node[below, font=\footnotesize] {2. TransferData} (12,-5);
+
+\draw[message, purple] (4,-6.5) -- node[above, font=\footnotesize] {3. AnnounceLeave} (8,-7);
+\draw[message, purple] (4,-7) -- node[below, font=\footnotesize] {3. AnnounceLeave} (12,-7.5);
+
+\draw[message, blue, thick] (4,-9) -- node[above, font=\footnotesize] {4. NodeActionResponse} (0,-9.5);
+
+\node[note, fill=red!10] at (5,-10.5) {context.stop(self)};
+
+% Funzioni
+\node[note, fill=green!10] at (14,-2) {\textbf{onNodeAction("leave")}};
+\node[note, fill=green!10] at (14,-5) {\textbf{onTransferData()}\\merge con versione};
+\node[note, fill=green!10] at (14,-7.5) {\textbf{onAnnounceLeave()}\\pruneKeysNotResponsible()};
+
+\end{tikzpicture}
+\caption{Flusso dell'operazione LEAVE}
+\end{figure}
+
+\textbf{Sequenza delle funzioni:}
+\begin{enumerate}
+    \item \texttt{TestManager.handleNodeAction("leave")} $\rightarrow$ invia \texttt{NodeAction}
+    \item \texttt{Node.onNodeAction("leave")}:
+    \begin{itemize}
+        \item Imposta mode=CRASHED, serving=false
+        \item Per ogni chiave, calcola nuovi responsabili
+        \item Invia \texttt{TransferData} ai nuovi responsabili
+        \item Invia \texttt{AnnounceLeave} a tutti i peer
+        \item Notifica il manager e ferma l'attore
+    \end{itemize}
+    \item \texttt{Node.onTransferData()} $\rightarrow$ merge dati nello store locale
+    \item \texttt{Node.onAnnounceLeave()} $\rightarrow$ aggiorna vista, esegue pruning
+\end{enumerate}
+
+\newpage
+\section{Operazione RECOVER}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=2cm,
+    every node/.style={font=\small},
+    actor/.style={rectangle, draw, fill=blue!20, minimum width=1.5cm, minimum height=0.8cm},
+    message/.style={->, >=stealth, thick},
+    note/.style={rectangle, draw, dashed, fill=yellow!20, font=\footnotesize, align=left}
+]
+
+% Attori
+\node[actor, fill=managercolor] (manager) at (0,0) {TestManager};
+\node[actor, fill=nodecolor] (recover) at (4,0) {Nodo Recovery};
+\node[actor, fill=nodecolor] (bootstrap) at (8,0) {Bootstrap};
+\node[actor, fill=nodecolor] (succ) at (11,0) {Successore};
+\node[actor, fill=nodecolor] (pred) at (14,0) {Predecessore};
+
+% Linee di vita
+\draw[dashed] (manager) -- (0,-18);
+\draw[dashed] (recover) -- (4,-18);
+\draw[dashed] (bootstrap) -- (8,-18);
+\draw[dashed] (succ) -- (11,-18);
+\draw[dashed] (pred) -- (14,-18);
+
+% Messaggi
+\draw[message, blue] (0,-1) -- node[above, font=\footnotesize] {1. NodeAction("recover")} (4,-1.5);
+
+\node[note, fill=orange!10] at (5,-2.5) {mode=RECOVERING};
+
+\draw[message, blue] (4,-3.5) -- node[above, font=\footnotesize] {2. GetPeers} (8,-4);
+\draw[message, green!50!black] (8,-4.5) -- node[above, font=\footnotesize] {3. PeerResponse} (4,-5);
+
+\draw[message, orange] (4,-6) -- node[above, font=\footnotesize] {4. ItemRequest} (11,-6.5);
+\draw[message, orange] (4,-6.5) -- node[below, font=\footnotesize] {4. ItemRequest} (14,-7);
+
+\draw[message, green!50!black] (11,-8) -- node[above, font=\footnotesize] {5. DataItemsBatch} (4,-8.5);
+\draw[message, green!50!black] (14,-9) -- node[above, font=\footnotesize] {5. DataItemsBatch} (4,-9.5);
+
+\node[note] at (2,-10.5) {Attende 2 risposte};
+\node[note, fill=orange!10] at (6,-11.5) {pruneKeysNotResponsible()\\startMaintenanceReads()};
+
+\draw[message, blue, thick] (4,-14) -- node[above, font=\footnotesize] {6. NodeActionResponse} (0,-14.5);
+
+\node[note, fill=green!10] at (5,-16) {mode=IDLE\\serving=true};
+
+% Funzioni laterali
+\node[note, fill=green!10] at (16,-2) {\textbf{onNodeAction("recover")}};
+\node[note, fill=green!10] at (16,-5) {\textbf{onPeerResponse()}\\trova succ/pred};
+\node[note, fill=green!10] at (16,-9) {\textbf{onDataItemsBatch()}\\merge dati};
+\node[note, fill=green!10] at (16,-13) {\textbf{completeMaintenanceIfDone()}};
+
+\end{tikzpicture}
+\caption{Flusso dell'operazione RECOVER}
+\end{figure}
+
+\textbf{Sequenza delle funzioni:}
+\begin{enumerate}
+    \item \texttt{TestManager.handleNodeAction("recover")} $\rightarrow$ seleziona bootstrap, invia \texttt{NodeAction}
+    \item \texttt{Node.onNodeAction("recover")}:
+    \begin{itemize}
+        \item Imposta mode=RECOVERING
+        \item Invia \texttt{GetPeers} al bootstrap
+    \end{itemize}
+    \item \texttt{Node.onPeerResponse()} $\rightarrow$ trova successore e predecessore, invia \texttt{ItemRequest} a entrambi
+    \item \texttt{Node.onDataItemsBatch()} (chiamato 2 volte):
+    \begin{itemize}
+        \item Merge dati nello store
+        \item Alla seconda risposta: \texttt{pruneKeysNotResponsible()}, \texttt{startMaintenanceReads()}
+    \end{itemize}
+    \item \texttt{Node.completeMaintenanceIfDone()} $\rightarrow$ mode=IDLE, serving=true, notifica manager
+\end{enumerate}
+
+\newpage
+\section{Tabella Riepilogativa Messaggi}
+
+\begin{longtable}{|p{3.5cm}|p{2.5cm}|p{2.5cm}|p{5cm}|}
+\hline
+\textbf{Messaggio} & \textbf{Mittente} & \textbf{Destinatario} & \textbf{Descrizione} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Messaggio} & \textbf{Mittente} & \textbf{Destinatario} & \textbf{Descrizione} \\
+\hline
+\endhead
+
+\multicolumn{4}{|c|}{\textbf{Operazioni Client}} \\
+\hline
+ReadRequest & Client & Node (Coord) & Richiesta lettura chiave \\
+WriteRequest & Client & Node (Coord) & Richiesta scrittura chiave/valore \\
+ReadResponse & Node & Client & Risposta lettura con valore e versione \\
+WriteResponse & Node & Client & Conferma scrittura con versione \\
+OperationFailed & Node & Client & Notifica fallimento operazione \\
+\hline
+
+\multicolumn{4}{|c|}{\textbf{Protocollo Quorum}} \\
+\hline
+GetVersionRead & Coord & Replicas & Richiesta versione per lettura \\
+VersionReadResponse & Replica & Coord & Risposta versione per lettura \\
+GetVersionWrite & Coord & Replicas & Richiesta versione + lock scrittura \\
+VersionWriteResponse & Replica & Coord & Risposta versione per scrittura \\
+UpdateValue & Coord & Replicas & Comando aggiornamento valore \\
+\hline
+
+\multicolumn{4}{|c|}{\textbf{Membership}} \\
+\hline
+NodeAction & Manager & Node & Comando leave/crash/recover \\
+NodeActionResponse & Node & Manager & Risultato azione \\
+GetPeers & Node & Bootstrap & Richiesta lista peer \\
+PeerResponse & Bootstrap & Node & Lista peer corrente \\
+ItemRequest & Node & Peer & Richiesta trasferimento dati \\
+DataItemsBatch & Peer & Node & Batch dati trasferiti \\
+AnnounceJoin & Node & All peers & Annuncio nuovo nodo \\
+AnnounceLeave & Node & All peers & Annuncio nodo uscente \\
+TransferData & Node & Successors & Trasferimento singola chiave \\
+\hline
+
+\caption{Riepilogo messaggi del sistema}
+\end{longtable}
+
+\end{document}

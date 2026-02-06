@@ -17,11 +17,11 @@ Mermaid charts summarize the logical flow, while detailed tables trace the pract
 ```mermaid
 flowchart TD
     Client -->|ReadRequest| Node
-    Node -->|GetVersionRead (key)| Replicas
+    Node -->|"GetVersionRead (key)"| Replicas
     Replicas -->|VersionReadResponse| Node
-    Node -->|>= R responses?| Decision
-    Decision -->|Yes| Update[Return highest version & refresh local store]
-    Decision -->|No (timeout)| Fail[Send OperationFailed to client]
+    Node -->|"R responses received?"| Decision
+    Decision -->|Yes| Update["Return highest version & refresh local store"]
+    Decision -->|"No (timeout)"| Fail[Send OperationFailed to client]
 ```
 
 **Practical flow**
@@ -46,10 +46,10 @@ flowchart TD
     Client -->|WriteRequest| Node
     Node -->|GetVersionWrite| Replicas
     Replicas -->|VersionWriteResponse| Node
-    Node -->|>= W responses?| DecisionW
-    DecisionW -->|Yes| NewVersion[Compute new version & broadcast UpdateValue]
-    NewVersion -->|Ack (implicit)| Client
-    DecisionW -->|No (timeout)| FailW[Send OperationFailed to client & participants]
+    Node -->|"W responses received?"| DecisionW
+    DecisionW -->|Yes| NewVersion["Compute new version & broadcast UpdateValue"]
+    NewVersion -->|"Ack (implicit)"| Client
+    DecisionW -->|"No (timeout)"| FailW["Send OperationFailed to client & participants"]
 ```
 
 **Practical flow**
@@ -70,15 +70,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    TM[TestManager] -->|Spawn JOIN node| Node
+    TM[TestManager] -->|"Spawn JOIN node"| Node
     Node -->|GetPeers| Bootstrap
     Bootstrap -->|PeerResponse| Node
     Node -->|ItemRequest| Successor
     Successor -->|DataItemsBatch| Node
-    Node -->|Maintenance Reads (quorum R)| ReplicaSet
-    ReplicaSet -->|All reads ok| Node
-    Node -->|AnnounceJoin & OK| TM
-    Node -. timeout detail .-> TM
+    Node -->|"Maintenance Reads (quorum R)"| ReplicaSet
+    ReplicaSet -->|"All reads ok"| Node
+    Node -->|"AnnounceJoin & OK"| TM
+    Node -. "timeout detail" .-> TM
 ```
 
 **Practical flow**
@@ -99,10 +99,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    TM -->|NodeAction leave| Node
-    Node -->|TransferData per key| Successors
+    TM -->|"NodeAction leave"| Node
+    Node -->|"TransferData per key"| Successors
     Node -->|AnnounceLeave| Peers
-    Node -->|NodeActionResponse (leave, success)| TM
+    Node -->|"NodeActionResponse (leave, success)"| TM
 ```
 
 **Practical flow**
@@ -120,17 +120,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    TM -->|NodeAction recover| Node
+    TM -->|"NodeAction recover"| Node
     Node -->|GetPeers| Bootstrap
     Bootstrap -->|PeerResponse| Node
-    Node -->|ItemRequest ctx_succ| Successor
-    Node -->|ItemRequest ctx_pred| Predecessor
-    Successor -->|DataItemsBatch ctx_succ| Node
-    Predecessor -->|DataItemsBatch ctx_pred| Node
-    Node -->|Maintenance Reads| ReplicaSet
-    ReplicaSet -->|Quorum ok| Node
-    Node -->|NodeActionResponse (recover, success)| TM
-    Node -. stage-specific timeout detail .-> TM
+    Node -->|"ItemRequest ctx_succ"| Successor
+    Node -->|"ItemRequest ctx_pred"| Predecessor
+    Successor -->|"DataItemsBatch ctx_succ"| Node
+    Predecessor -->|"DataItemsBatch ctx_pred"| Node
+    Node -->|"Maintenance Reads"| ReplicaSet
+    ReplicaSet -->|"Quorum ok"| Node
+    Node -->|"NodeActionResponse (recover, success)"| TM
+    Node -. "stage-specific timeout detail" .-> TM
 ```
 
 **Practical flow**
